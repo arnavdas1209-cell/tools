@@ -81,4 +81,78 @@ npm_global "@mermaid-js/mermaid-cli"
 log "TIER 1: installing drawio-desktop (CLI export runs under xvfb-run)."
 npm_global "drawio-desktop"
 
-log "node stage complete (mermaid-cli + drawio-desktop; puppeteer->system chromium)."
+# ===========================================================================
+# TIER 2 (chemistry): Ketcher static site (epam/ketcher)
+#   Ketcher is a web-based 2D chemical structure editor. We clone the repo,
+#   npm-install, and build the standalone example into a static bundle that can
+#   be served by any static HTTP server (no backend required for drawing).
+#   The whole build is capped at 30 min; on failure we document it in
+#   docs/UNSUPPORTED.md and move on (do not loop).
+#
+#   Start command (documented in docs/README.md):
+#     npx http-server "${REPO_ROOT}/.local/ketcher" -p 8080
+#   then open http://localhost:8080/ in a browser.
+# ===========================================================================
+KETCHER_DIR="${REPO_ROOT}/.local/ketcher-src"
+KETCHER_SITE="${REPO_ROOT}/.local/ketcher"
+KETCHER_REF="v2.24.0"   # pinned release tag; adjust after a successful build
+
+build_ketcher() {
+  log "TIER 2: building self-hosted Ketcher static site (epam/ketcher @ ${KETCHER_REF})."
+
+  if ! command -v git >/dev/null 2>&1; then
+    log "ERROR: git not available; cannot clone Ketcher."
+    return 1
+  fi
+
+  rm -rf "${KETCHER_DIR}"
+  if ! cap git clone --depth 1 --branch "${KETCHER_REF}" \
+        https://github.com/epam/ketcher.git "${KETCHER_DIR}"; then
+    log "Pinned tag clone failed; retrying default branch (one fallback)."
+    rm -rf "${KETCHER_DIR}"
+    cap git clone --depth 1 https://github.com/epam/ketcher.git "${KETCHER_DIR}" || return 1
+  fi
+
+  # Ketcher is an npm monorepo. Install + build the standalone demo package,
+  # which emits a self-contained static bundle under its `dist/` directory.
+  (
+    cd "${KETCHER_DIR}" || exit 1
+    cap npm ci --no-fund --no-audit || cap npm install --no-fund --no-audit || exit 1
+    # The example/standalone app builds a backend-free static site.
+    cap npm run build:standalone || cap npm run build || exit 1
+  ) || return 1
+
+  # Locate the produced static bundle (package layout varies by release).
+  local dist=""
+  for d in \
+      "${KETCHER_DIR}/example/dist" \
+      "${KETCHER_DIR}/packages/ketcher-standalone/dist" \
+      "${KETCHER_DIR}/dist"; do
+    if [ -d "${d}" ] && [ -n "$(ls -A "${d}" 2>/dev/null)" ]; then dist="${d}"; break; fi
+  done
+  if [ -z "${dist}" ]; then
+    log "ERROR: Ketcher build produced no recognizable dist/ directory."
+    return 1
+  fi
+
+  rm -rf "${KETCHER_SITE}"
+  mkdir -p "${KETCHER_SITE}"
+  cp -r "${dist}/." "${KETCHER_SITE}/"
+  log "Ketcher static site ready at ${KETCHER_SITE} (serve with: npx http-server ${KETCHER_SITE} -p 8080)."
+  return 0
+}
+
+if ! build_ketcher; then
+  UNSUP="${REPO_ROOT}/docs/UNSUPPORTED.md"
+  log "Ketcher build failed/capped; recording in ${UNSUP} and moving on."
+  {
+    echo ""
+    echo "<!-- auto-appended by scripts/30_node.sh on $(date -u +%Y-%m-%dT%H:%M:%SZ) -->"
+    echo "- **Ketcher** (epam/ketcher): static-site build failed or exceeded the 30-min cap"
+    echo "  on this host. Fallback: use RDKit / Indigo for programmatic 2D rendering, or run"
+    echo "  the official \`epmlsop/ketcher-standalone\` Docker image. Re-run \`scripts/30_node.sh\`"
+    echo "  in the devcontainer/CI where node + network are available."
+  } >> "${UNSUP}"
+fi
+
+log "node stage complete (mermaid-cli + drawio-desktop + Ketcher; puppeteer->system chromium)."

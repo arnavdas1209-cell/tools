@@ -1,0 +1,41 @@
+# envs/chem.yml - Tier 2 "chem" conda environment (thermo / phase / chemistry).
+#
+# Create/update with:
+#   mamba env create -f envs/chem.yml      # or: conda env create -f envs/chem.yml
+#   mamba env update -f envs/chem.yml --prune
+#
+# Pin versions with `conda env export --from-history` (or conda-lock) after a
+# successful solve. Never use sudo inside this env.
+name: chem
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  # CALPHAD / phase-diagram stack
+  - pycalphad          # binary/ternary phase diagrams from TDB databases
+  - espei              # Bayesian parameter estimation feeding pycalphad
+  # thermochemistry
+  - cantera            # chemical kinetics / thermodynamics / transport
+  - thermo             # pure-component + mixture thermophysical properties
+  - chemicals          # chemical property database backing `thermo`
+  # cheminformatics / molecule rendering
+  - rdkit              # also pip-installable (wheels on PyPI); see fallback note
+  - openbabel          # SMILES <-> mol2 etc.; conda-forge ships the CLI + python
+  # quantum chemistry
+  - xtb                # semi-empirical GFN-xTB; conda-forge only (no PyPI wheel)
+  - pyscf              # ab-initio quantum chemistry (Linux conda-forge wheels)
+  - psi4               # ab-initio quantum chemistry; conda-forge `psi4` channel pkg
+  - pip
+  - pip:
+      # epam.indigo cheminformatics toolkit - PyPI only (no conda-forge package).
+      - epam.indigo
+#
+# conda-forge availability caveats + fallbacks (try ONE alternative, then
+# document in docs/UNSUPPORTED.md and move on - do not loop):
+#   - rdkit: on conda-forge AND PyPI (`pip install rdkit`). If the conda solve
+#     is slow/conflicting, drop it here and `pip install rdkit` instead.
+#   - psi4: historically distributed via its own `psi4` conda label; if the
+#     conda-forge solve fails, add channel `psi4` or use the psi4 Docker image.
+#   - xtb / pyscf / openbabel: conda-forge only (no reliable PyPI wheels). If a
+#     solve fails on an arch, fall back to the upstream Docker image per tool.
+#   - epam.indigo: PyPI only (pip section above); no conda-forge package exists.

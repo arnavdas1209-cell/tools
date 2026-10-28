@@ -131,7 +131,85 @@ install_quarto() {
 install_quarto || log "Continuing despite Quarto install failure (logged)."
 
 # ===========================================================================
+# TIER 2: OpenCalphad (best-effort build from source) - sundmanbo/opencalphad
+#   This is the ONE explicitly-allowed source build. OpenCalphad is a Fortran
+#   CALPHAD assessment engine built with gfortran + make. Capped at 30 min; on
+#   failure we log to docs/UNSUPPORTED.md with the pycalphad/ESPEI fallback and
+#   move on (do not loop). Never uses sudo.
+# ===========================================================================
+OPENCALPHAD_REPO="https://github.com/sundmanbo/opencalphad.git"
+build_opencalphad() {
+  log "TIER 2: best-effort OpenCalphad source build (gfortran, capped at 30 min)."
+
+  if ! command -v git >/dev/null 2>&1; then
+    log "ERROR: git not available; cannot clone OpenCalphad."
+    return 1
+  fi
+  if ! command -v gfortran >/dev/null 2>&1; then
+    log "ERROR: gfortran not available; OpenCalphad needs a Fortran toolchain."
+    return 1
+  fi
+  if ! command -v make >/dev/null 2>&1; then
+    log "ERROR: make not available; cannot build OpenCalphad."
+    return 1
+  fi
+
+  local src="${REPO_ROOT}/.local/opencalphad-src"
+  rm -rf "${src}"
+  if ! cap git clone --depth 1 "${OPENCALPHAD_REPO}" "${src}"; then
+    log "ERROR: OpenCalphad clone failed."
+    return 1
+  fi
+
+  # The repository ships a Makefile; `make` yields the `oc` console binary.
+  # Build directory layout varies; build wherever a Makefile is found.
+  local builddir=""
+  for d in "${src}" "${src}/OCSoftware" "${src}/src"; do
+    if [ -f "${d}/Makefile" ] || [ -f "${d}/makefile" ]; then builddir="${d}"; break; fi
+  done
+  if [ -z "${builddir}" ]; then
+    log "ERROR: no Makefile found in OpenCalphad checkout."
+    return 1
+  fi
+
+  if ! ( cd "${builddir}" && cap make ); then
+    log "ERROR: OpenCalphad 'make' failed."
+    return 1
+  fi
+
+  # Install any produced console executable (commonly named oc / oc6 / linkoc).
+  local found=""
+  for name in oc oc6 linkoc opencalphad; do
+    if [ -x "${builddir}/${name}" ]; then
+      install -m 0755 "${builddir}/${name}" "${BIN_DIR}/${name}"
+      found="${name}"; break
+    fi
+  done
+  if [ -z "${found}" ]; then
+    log "ERROR: OpenCalphad build produced no recognizable executable."
+    return 1
+  fi
+
+  log "Installed OpenCalphad (${found}) -> ${BIN_DIR}/${found}"
+  return 0
+}
+
+if ! build_opencalphad; then
+  UNSUP="${REPO_ROOT}/docs/UNSUPPORTED.md"
+  log "OpenCalphad build failed/capped; recording in ${UNSUP} and moving on."
+  {
+    echo ""
+    echo "<!-- auto-appended by scripts/40_binaries.sh on $(date -u +%Y-%m-%dT%H:%M:%SZ) -->"
+    echo "- **OpenCalphad** (sundmanbo/opencalphad): source build failed or exceeded the"
+    echo "  30-min cap on this host (needs gfortran + make). Fallback: use **pycalphad**"
+    echo "  and **ESPEI** (both in \`envs/chem.yml\`) for CALPHAD phase-diagram work."
+    echo "  Re-run \`scripts/40_binaries.sh\` in the devcontainer/CI where the Fortran"
+    echo "  toolchain is present."
+  } >> "${UNSUP}"
+fi
+
+# ===========================================================================
 # TODO(tier5-heavy): static heavy solver binaries, gated by HEAVY_OK=1
 # ===========================================================================
 
-log "binaries stage complete (Typst + Quarto CLI into ${BIN_DIR})."
+log "binaries stage complete (Typst + Quarto CLI + best-effort OpenCalphad into ${BIN_DIR})."

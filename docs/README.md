@@ -55,6 +55,22 @@ run under a virtual framebuffer (`xvfb`) or a `--no-sandbox` browser.
 
 - **Inkscape**: `inkscape in.svg --export-type=pdf --export-filename=out.pdf`.
 
+## Self-hosted Ketcher (chemical structure editor)
+
+`scripts/30_node.sh` clones [epam/ketcher](https://github.com/epam/ketcher),
+builds the backend-free standalone bundle, and copies it to
+`.local/ketcher/`. It is a static site, so serve it with any static HTTP
+server (no backend required for 2D structure drawing):
+
+```bash
+npx http-server .local/ketcher -p 8080
+# then open http://localhost:8080/ in a browser
+```
+
+Any static server works equally well, e.g. `python3 -m http.server 8080 -d .local/ketcher`.
+If the build fails or exceeds the 30-min cap it is recorded in
+[`docs/UNSUPPORTED.md`](UNSUPPORTED.md) with the RDKit/Indigo fallback.
+
 ## Honesty rule
 
 A tool is never marked **PASS** until its smoke test actually passes. Anything
