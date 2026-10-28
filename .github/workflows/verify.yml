@@ -1,0 +1,124 @@
+name: verify
+
+# Tiers 1-3 run on every push and pull request.
+# Tiers 4-5 (heavy: atomistic, cad, chem, MOOSE/OpenFOAM/Code_Aster) run on a
+# nightly schedule to keep per-push CI fast.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  schedule:
+    # 03:17 UTC nightly (odd minute to avoid the top-of-hour stampede).
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Fast path: runs on every push / PR. Installs + verifies tiers 1-3.
+  # -------------------------------------------------------------------------
+  tiers-1-3:
+    name: tiers 1-3 (core, latex, fea)
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache apt archives
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: apt-${{ runner.os }}-${{ hashFiles('scripts/10_apt.sh') }}
+          restore-keys: |
+            apt-${{ runner.os }}-
+
+      - name: Cache conda packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/conda_pkgs_dir
+            ~/.conda/pkgs
+          key: conda-${{ runner.os }}-${{ hashFiles('envs/core.yml', 'envs/fea.yml') }}
+          restore-keys: |
+            conda-${{ runner.os }}-
+
+      - name: Detect environment
+        run: bash scripts/00_detect.sh
+
+      - name: Setup (install stages)
+        env:
+          TIERS: "1 2 3"
+        run: make setup
+
+      - name: Verify (smoke tests)
+        run: make verify
+
+      - name: Upload verify report + artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-tiers-1-3
+          path: |
+            docs/VERIFY_REPORT.md
+            docs/ENV_REPORT.md
+            figures/**
+            **/*.pdf
+          if-no-files-found: ignore
+
+  # -------------------------------------------------------------------------
+  # Nightly path: heavy tiers 4-5.
+  # -------------------------------------------------------------------------
+  tiers-4-5:
+    name: tiers 4-5 (atomistic, cad, chem, heavy)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache apt archives
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: apt-${{ runner.os }}-${{ hashFiles('scripts/10_apt.sh') }}
+          restore-keys: |
+            apt-${{ runner.os }}-
+
+      - name: Cache conda packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/conda_pkgs_dir
+            ~/.conda/pkgs
+          key: conda-${{ runner.os }}-${{ hashFiles('envs/atomistic.yml', 'envs/cad.yml', 'envs/chem.yml') }}
+          restore-keys: |
+            conda-${{ runner.os }}-
+
+      - name: Detect environment
+        run: bash scripts/00_detect.sh
+
+      - name: Setup (install stages)
+        env:
+          TIERS: "4 5"
+        run: make setup
+
+      - name: Verify (smoke tests)
+        run: make verify
+
+      - name: Upload verify report + artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-tiers-4-5
+          path: |
+            docs/VERIFY_REPORT.md
+            docs/ENV_REPORT.md
+            figures/**
+            **/*.pdf
+          if-no-files-found: ignore

@@ -1,0 +1,30 @@
+{
+  "name": "sci-workspace (Ubuntu 24.04, headless)",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "remoteUser": "vscode",
+  "workspaceFolder": "/workspaces/sci-workspace",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "James-Yu.latex-workshop",
+        "ms-toolsai.jupyter",
+        "hediet.vscode-drawio",
+        "bierner.markdown-mermaid",
+        "quarto.quarto",
+        "ms-python.python"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "python.terminal.activateEnvironment": false
+      }
+    }
+  },
+  "postCreateCommand": "make setup",
+  "remoteEnv": {
+    "PYVISTA_OFF_SCREEN": "true",
+    "MPLBACKEND": "Agg"
+  }
+}
