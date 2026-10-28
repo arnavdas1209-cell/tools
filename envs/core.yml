@@ -27,6 +27,12 @@ dependencies:
   # engineering notes / schematics
   - schemdraw
   - lcapy
+  # circuit simulation front-end (Tier 6). PySpice is a Python front-end to the
+  # ngspice / Xyce SPICE engines; the engines themselves come from apt
+  # (ngspice) or conda/binary (xyce) in scripts/10_apt.sh / 40_binaries.sh.
+  # PySpice itself installs from conda-forge (and PyPI) - added here so the core
+  # env can drive SPICE simulations once a backend engine is present.
+  - pyspice
   # graph tooling (CLI + python bindings)
   - graphviz
   - pygraphviz
