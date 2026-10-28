@@ -101,8 +101,64 @@ else
 fi
 
 # ===========================================================================
-# TODO(tier3-fea): FEA system deps (OpenFOAM apt repo gated by HEAVY_OK)
+# TIER 3 (fea): FEA / multiphysics / mesh / CFD system packages.
+#   Solvers/meshers/post from Ubuntu universe, plus headless offscreen GL
+#   (OSMesa/EGL) for PyVista/ParaView, plus the official OpenFOAM apt repo.
 # ===========================================================================
+log "TIER 3 apt packages (FEA / multiphysics / mesh / CFD)."
+apt_install \
+  calculix-ccx \
+  gmsh \
+  elmerfem-csc \
+  freefem++ \
+  code-saturne \
+  paraview-python \
+  libdeal.ii-dev
+
+# Offscreen rendering deps for PyVista / ParaView on a headless host (no X).
+# libosmesa6 gives a software OpenGL context; the EGL/GLX libs cover GPU-less
+# EGL rendering. PYVISTA_OFF_SCREEN=true (exported below) tells PyVista to use
+# them instead of opening a window.
+log "TIER 3 offscreen rendering deps (OSMesa / EGL)."
+apt_install \
+  libosmesa6 \
+  libgl1-mesa-dri \
+  libegl1 \
+  xvfb
+
+# Export PYVISTA_OFF_SCREEN so every PyVista/ParaView call in this shell renders
+# headless. Documented in docs/README.md; smoke tests also set it defensively.
+export PYVISTA_OFF_SCREEN=true
+log "Exported PYVISTA_OFF_SCREEN=true for headless PyVista/ParaView rendering."
+
+# --- OpenFOAM: official openfoam.org apt repo (primary path) ----------------
+# Primary install path per the task: add the official openfoam.org apt repo and
+# install the latest openfoam package. If the repo is unreachable (offline CI,
+# air-gapped), we do NOT loop - we log it and rely on the Docker-image fallback
+# pulled in scripts/50_docker_images.sh (gated on HAS_DOCKER). Both paths are
+# documented in docs/README.md and docs/UNSUPPORTED.md.
+log "OpenFOAM: attempting official openfoam.org apt repo (primary path)."
+if curl -fsSL https://dl.openfoam.org/gpg.key 2>/dev/null \
+      | ${SUDO} gpg --dearmor -o /usr/share/keyrings/openfoam-archive-keyring.gpg 2>/dev/null; then
+  echo "deb [signed-by=/usr/share/keyrings/openfoam-archive-keyring.gpg] https://dl.openfoam.org/ubuntu $(. /etc/os-release && echo "${UBUNTU_CODENAME:-noble}") main" \
+    | ${SUDO} tee /etc/apt/sources.list.d/openfoam.list >/dev/null
+  if cap ${SUDO} apt-get update; then
+    # The metapackage name tracks the latest release (e.g. openfoam12).
+    if apt_install openfoam; then
+      log "OpenFOAM installed from openfoam.org apt repo."
+    else
+      log "WARN: 'openfoam' metapackage not resolvable; falling back to Docker image (50_docker_images.sh)."
+      printf '\n- OpenFOAM apt metapackage unresolvable from openfoam.org repo; Docker-image fallback (`scripts/50_docker_images.sh`, gated on HAS_DOCKER) applies. See docs/UNSUPPORTED.md.\n' \
+        >> "${REPO_ROOT}/docs/ENV_REPORT.md" || true
+    fi
+  else
+    log "WARN: openfoam.org repo index unreachable; using Docker-image fallback (50_docker_images.sh)."
+  fi
+else
+  log "WARN: could not fetch openfoam.org GPG key (repo unreachable); using Docker-image fallback (50_docker_images.sh)."
+  printf '\n- OpenFOAM openfoam.org apt repo unreachable (no GPG key); Docker-image fallback (`scripts/50_docker_images.sh`, gated on HAS_DOCKER) applies. See docs/UNSUPPORTED.md.\n' \
+    >> "${REPO_ROOT}/docs/ENV_REPORT.md" || true
+fi
 
 # ===========================================================================
 # TODO(tier4-cad): CAD/graphics system deps (inkscape, drawio deps, chromium)

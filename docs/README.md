@@ -71,6 +71,63 @@ Any static server works equally well, e.g. `python3 -m http.server 8080 -d .loca
 If the build fails or exceeds the 30-min cap it is recorded in
 [`docs/UNSUPPORTED.md`](UNSUPPORTED.md) with the RDKit/Indigo fallback.
 
+## FEA / multiphysics / mesh / CFD (Tier 3)
+
+The `fea` conda env (`envs/fea.yml`) provides FEniCSx (dolfinx), FiPy,
+scikit-fem, SFEPy, MFEM, meshio, pygmsh, PyVista and SU2; NGSolve is installed
+via `pip` in that env's `pip:` section. System solvers (`calculix-ccx`, `gmsh`,
+`elmerfem-csc`, `freefem++`, `code-saturne`, `paraview-python`,
+`libdeal.ii-dev`) come from apt in `scripts/10_apt.sh`.
+
+### Offscreen rendering (PyVista / ParaView)
+
+On a headless host there is no X server, so PyVista/ParaView render through
+software/EGL OpenGL. `scripts/10_apt.sh` installs `libosmesa6` (OSMesa), the
+Mesa DRI/EGL libraries, and exports:
+
+```bash
+export PYVISTA_OFF_SCREEN=true
+```
+
+Set this in your shell (CI and the devcontainer already export it) so PyVista
+never tries to open a window:
+
+```bash
+PYVISTA_OFF_SCREEN=true python my_pyvista_script.py
+```
+
+### OpenFOAM: apt repo (primary) with Docker fallback
+
+- **Primary:** `scripts/10_apt.sh` adds the official
+  [openfoam.org](https://openfoam.org) apt repo and installs the latest
+  `openfoam` package.
+- **Fallback:** if that repo is unreachable, `scripts/50_docker_images.sh`
+  pulls the `opencfd/openfoam-default` image (only when a Docker runtime is
+  available, `HAS_DOCKER=1`). The failure is logged to `docs/ENV_REPORT.md`; we
+  do not loop.
+
+### Code_Aster via container (`scripts/run_aster.sh`)
+
+Code_Aster ships as a container image (pulled by `scripts/50_docker_images.sh`,
+Apptainer preferred, Docker fallback). Run a study headless with:
+
+```bash
+scripts/run_aster.sh path/to/study.export     # or a .comm (a minimal .export is synthesized)
+```
+
+If no working container runtime exists (`CONTAINER_RUNTIME=none`),
+`run_aster.sh` exits 2 (SKIP) cleanly and the situation is recorded in
+[`docs/UNSUPPORTED.md`](UNSUPPORTED.md).
+
+### MOOSE / PRISMS-PF (optional, heavy)
+
+MOOSE is optional and only installed when `HEAVY_OK=1` (RAM >= 16 GB and free
+disk >= 40 GB). `scripts/20_conda.sh` uses the conda `moose-dev` package and
+**never** compiles from source. PRISMS-PF builds on deal.II (apt
+`libdeal.ii-dev`). SALOME is skipped by design; see
+[`docs/UNSUPPORTED.md`](UNSUPPORTED.md) for the Gmsh + meshio + ParaView
+fallback.
+
 ## Honesty rule
 
 A tool is never marked **PASS** until its smoke test actually passes. Anything

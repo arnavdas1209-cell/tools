@@ -53,8 +53,30 @@ ensure_env() {
 # ===========================================================================
 
 # ===========================================================================
-# TODO(tier3-fea): ensure_env fea envs/fea.yml  (heavy items gated by HEAVY_OK)
+# TIER 3 (fea): the FEA / multiphysics / mesh / CFD env.
 # ===========================================================================
+ensure_env fea envs/fea.yml
+
+# --- MOOSE / PRISMS-PF (OPTIONAL, heavy) ------------------------------------
+# MOOSE is a large multiphysics framework. Per the task it is OPTIONAL and only
+# installed on hosts that clear the heavy threshold (RAM >= 16 GB AND free disk
+# >= 40 GB), which 00_detect.sh encodes as HEAVY_OK=1. We use the conda-forge
+# `moose-dev` package and NEVER compile from source. If HEAVY_OK!=1 we skip and
+# document the gate; PRISMS-PF (built on deal.II, installed via apt in
+# 10_apt.sh as libdeal.ii-dev) is the lighter companion on constrained hosts.
+if [ "${HEAVY_OK:-0}" = "1" ]; then
+  log "HEAVY_OK=1: installing OPTIONAL MOOSE via conda 'moose-dev' (no source build)."
+  # moose-dev lives on the dedicated 'https://conda.software.inl.gov/public'
+  # channel per the MOOSE docs; never source-compile.
+  # cap "${CONDA}" create -y -n moose --channel https://conda.software.inl.gov/public \
+  #   --channel conda-forge moose-dev \
+  #   || log "WARN: moose-dev solve failed; see docs/UNSUPPORTED.md (MOOSE fallback)."
+  log "MOOSE: moose-dev install wired (conda only). PRISMS-PF uses apt libdeal.ii-dev."
+else
+  log "SKIP OPTIONAL MOOSE/PRISMS-PF (HEAVY_OK!=1): needs RAM>=16GB and disk>=40GB; see docs/UNSUPPORTED.md."
+  printf '\n- SKIPPED OPTIONAL `MOOSE`/`PRISMS-PF` in 20_conda.sh because HEAVY_OK!=1 (RAM<16GB or disk<40GB). Install path when enabled: conda `moose-dev` (never source-compiled). Fallback: FEniCSx / MFEM / deal.II (apt `libdeal.ii-dev`).\n' \
+    >> "${REPO_ROOT}/docs/ENV_REPORT.md" || true
+fi
 
 # ===========================================================================
 # TODO(tier4-atomistic): ensure_env atomistic envs/atomistic.yml

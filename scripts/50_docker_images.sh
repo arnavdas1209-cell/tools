@@ -48,11 +48,25 @@ pull_image() {
 }
 
 # ===========================================================================
-# TODO(tier3-fea): OpenFOAM fallback image (only if native install fails)
+# TIER 3 (fea): OpenFOAM fallback image.
+#   Primary OpenFOAM path is the openfoam.org apt repo in scripts/10_apt.sh.
+#   This image is the documented fallback when that repo is unreachable. Only
+#   relevant when a Docker runtime is available (HAS_DOCKER=1); with Apptainer
+#   we pull the docker:// ref the same way. The openfoam smoke test uses the
+#   native install when present and otherwise SKIPs.
 # ===========================================================================
+log "TIER 3: OpenFOAM fallback container image."
+pull_image "opencfd/openfoam-default:latest"
 
 # ===========================================================================
-# TODO(tier5-heavy): Code_Aster image, gated by HEAVY_OK=1
+# TIER 3 (fea): Code_Aster image.
+#   Code_Aster ships as a container; there is no clean apt/conda path for a
+#   headless install. We prefer Apptainer (CONTAINER_RUNTIME picks it when
+#   present) and fall back to Docker. scripts/run_aster.sh runs a .comm/.export
+#   case against this image and SKIPs cleanly when no runtime exists (the host
+#   case: podman shim broken, apptainer absent). Documented in UNSUPPORTED.md.
 # ===========================================================================
+log "TIER 3: Code_Aster container image."
+pull_image "quay.io/codeaster/codeaster:latest"
 
 log "container-image stage skeleton complete (no images wired yet)."

@@ -61,9 +61,51 @@ with a NOTE, per the honesty rule.
 > `figures/python/{rdkit_molecule.png, indigo_molecule.png,
 > pycalphad_alzn_phase.png, ellingham.png}`.
 
+## Tier 3 (FEA / multiphysics / mesh / CFD)
+
+On the validation host (Amazon Linux 2023: no apt, no conda, no working
+container runtime), the FEA solvers/meshers/CFD tools are apt/conda/container
+based and are **SKIP here**, running for real in the Ubuntu 24.04 devcontainer /
+CI. The pure-python pieces that pip-install (`meshio`, and a `scikit-fem`
+Poisson fallback) **actually PASSED** (see `docs/VERIFY_REPORT.md`). These SKIPs
+are not failures: the smoke tests emit exit 2 (SKIP) with a NOTE, per the
+honesty rule.
+
+| Tool | Tier | Reason skipped/failed (on host) | Fallback / where it runs | Final status |
+| --- | --- | --- | --- | --- |
+| CalculiX (ccx) | 3 | `ccx` solver is apt-only (`calculix-ccx`); absent on host. The `gmsh` wheel can mesh, but without ccx the solve cannot run | apt `calculix-ccx` + `gmsh` in devcontainer/CI. The analytic cantilever check (delta=F*L^3/(3*E*I), 5% tol) is code-reviewable now | SKIP (host) |
+| Elmer (ElmerSolver/ElmerGrid) | 3 | apt-only (`elmerfem-csc`); absent on host | apt `elmerfem-csc` in devcontainer/CI | SKIP (host) |
+| FEniCSx (dolfinx) | 3 | conda-forge only for a working MPI/PETSc build; absent on host | conda-forge `fenics-dolfinx` in `fea` env; `dolfinx/dolfinx` Docker image. Host ran the **scikit-fem** Poisson fallback (PASS) | SKIP (dolfinx) / PASS (skfem) |
+| FreeFEM (FreeFem++) | 3 | apt-only (`freefem++`); absent on host | apt `freefem++` in devcontainer/CI | SKIP (host) |
+| OpenFOAM | 3 | No apt on host; openfoam.org repo + Docker both unavailable here | **Primary:** openfoam.org apt repo (`openfoam` pkg) in `scripts/10_apt.sh`. **Fallback:** `opencfd/openfoam-default` Docker image in `scripts/50_docker_images.sh` (gated on `HAS_DOCKER`) | SKIP (host) |
+| SU2 (SU2_CFD) | 3 | conda-forge `su2` in `fea` env; absent on host | conda-forge `su2` in `fea` env, else SU2 release binaries / Docker image | SKIP (host) |
+| Code_Aster | 3 | Ships as a container; host has **no working container runtime** (podman shim broken, apptainer absent -> `CONTAINER_RUNTIME=none`) | Official Code_Aster image via **Apptainer (preferred) or Docker**, pulled in `scripts/50_docker_images.sh`; run headless with `scripts/run_aster.sh <case.comm|.export>`. `run_aster.sh` exits 2 (SKIP) cleanly when no runtime exists | SKIP (host) |
+| MOOSE / PRISMS-PF | 3 | OPTIONAL, heavy; conda-only `moose-dev`. Gated on `HEAVY_OK` (RAM>=16GB && disk>=40GB). No conda on host | conda `moose-dev` (channel `conda.software.inl.gov/public`) in `scripts/20_conda.sh`; **never source-compiled**. PRISMS-PF via deal.II (apt `libdeal.ii-dev`). Fallback: FEniCSx / MFEM | SKIP (host) |
+| Salome (SALOME platform) | 3 | **Skipped by design.** Heavy GUI/CAD-CAE integration platform; no clean headless apt/conda install, and the official distribution is a large GUI bundle | **Fallback:** Gmsh (meshing) + meshio (mesh I/O) + ParaView/`paraview-python` (post) cover the headless mesh+visualize workflow; FreeCAD (Tier 4 CAD env) for CAD. Use the SALOME Docker image only if a GUI session is explicitly needed | SKIP (by design) |
+
+> `meshio_convert` and `fenics_poisson` (via the scikit-fem fallback) are the
+> Tier 3 tests that **actually PASSED** on this host via a throwaway `/tmp`
+> venv. Everything requiring apt/conda/a container runtime is SKIP here and
+> staged for the devcontainer/CI.
+
+> **OpenFOAM paths, explicitly:** the primary install is the official
+> openfoam.org apt repo added in `scripts/10_apt.sh` (install the latest
+> `openfoam` metapackage). If that repo is unreachable we do NOT loop - we log
+> it to `docs/ENV_REPORT.md` and fall back to the `opencfd/openfoam-default`
+> Docker image pulled in `scripts/50_docker_images.sh` (only when
+> `HAS_DOCKER=1`). The `openfoam` smoke test uses whichever is present and
+> SKIPs when neither is.
+
+> **Offscreen rendering:** `scripts/10_apt.sh` installs `libosmesa6` (+ EGL/GLX
+> Mesa libs) and exports `PYVISTA_OFF_SCREEN=true` so PyVista/ParaView render
+> headless with no X server. Documented in `docs/README.md`.
+
 ### Proprietary-tool fallback mapping (open-source replacements)
 
 | Proprietary tool | Open-source fallback(s) in this workspace |
 | --- | --- |
 | ChemDraw | RDKit, Indigo (epam.indigo), Ketcher (self-hosted structure editor) |
 | Thermo-Calc / FactSage | pycalphad, ESPEI, OpenCalphad (best-effort source build) |
+| Ansys / Abaqus / COMSOL (FEA / multiphysics) | CalculiX, Code_Aster, Elmer, FEniCSx (also MFEM, deal.II/PRISMS-PF, MOOSE) |
+| Ansys Fluent / CFX (CFD) | OpenFOAM, SU2 (also code-saturne) |
+| SALOME (pre/post + CAE integration) | Gmsh + meshio + ParaView (paraview-python); FreeCAD for CAD |

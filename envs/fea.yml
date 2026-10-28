@@ -1,0 +1,50 @@
+# envs/fea.yml - Tier 3 "fea" conda environment (FEA / multiphysics / mesh / CFD).
+#
+# Create/update with:
+#   mamba env create -f envs/fea.yml      # or: conda env create -f envs/fea.yml
+#   mamba env update -f envs/fea.yml --prune
+#
+# Pin versions with `conda env export --from-history` (or conda-lock) after a
+# successful solve. Never use sudo inside this env.
+name: fea
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  # finite-element / multiphysics solvers
+  - fenics-dolfinx     # FEniCSx: scalable FEM (Poisson, elasticity, ...)
+  - fipy               # finite-volume PDE solver
+  - scikit-fem         # lightweight pure-python FEM (pip-installable fallback)
+  - sfepy              # simple finite elements in python
+  - mfem               # modular finite-element library (python bindings)
+  # meshing / mesh I/O
+  - meshio             # read/write 40+ mesh formats; also on PyPI
+  - pygmsh             # pythonic Gmsh scripting (needs the gmsh library)
+  # visualization (offscreen on headless hosts; see PYVISTA_OFF_SCREEN below)
+  - pyvista            # VTK-based 3D plotting; set PYVISTA_OFF_SCREEN=true
+  # CFD
+  - su2                # SU2 compressible/incompressible CFD suite (conda-forge)
+  - pip
+  - pip:
+      # NGSolve finite-element library - installed via pip here. conda-forge
+      # packaging of ngsolve is inconsistent across platforms, so pip (the
+      # upstream-recommended install) is used as the reliable path.
+      - ngsolve
+#
+# conda-forge availability caveats + fallbacks (try ONE alternative, then
+# document in docs/UNSUPPORTED.md and move on - do not loop):
+#   - fenics-dolfinx: conda-forge only for a working MPI/PETSc build; if the
+#     solve conflicts, use the official `dolfinx/dolfinx` Docker image instead.
+#   - su2: on conda-forge; if unavailable for an arch, use the SU2 release
+#     binaries or the official SU2 Docker image.
+#   - mfem / sfepy: conda-forge; sfepy is also pip-installable but heavy to
+#     build - prefer the conda-forge binary.
+#   - pygmsh: needs the Gmsh library; conda-forge `gmsh` (or the `gmsh` PyPI
+#     wheel) provides it. The apt `gmsh` in scripts/10_apt.sh covers the system
+#     path; inside this env conda-forge pulls gmsh as a pygmsh dependency.
+#   - ngsolve: pip (above). If the wheel is missing for an arch, build per the
+#     NGSolve docs or use the upstream `ngsolve/ngsolve` Docker image.
+#
+# Offscreen rendering: export PYVISTA_OFF_SCREEN=true (set in scripts/10_apt.sh
+# env setup and documented in docs/README.md) so PyVista/ParaView render
+# headless via OSMesa/EGL (libosmesa6) with no X server.
