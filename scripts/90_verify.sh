@@ -21,6 +21,14 @@
 #       VERSION=<string>
 #       NOTE=<free text>
 #     These are parsed (last occurrence wins) to populate the table columns.
+#
+# Tier filtering (CI job split): when the TIERS environment variable is set to a
+# space-separated list of tier numbers (e.g. TIERS="1 2 3"), only tests whose
+# tier is in that list are run; out-of-scope tiers are not executed at all (not
+# even as SKIP rows), because they belong to a different CI job's report. Each
+# test declares its tier with a literal `TIER=<n>` line, which we read with a
+# grep WITHOUT executing the test, so filtering costs nothing. When TIERS is
+# unset or empty, every discovered test runs (the host / full-matrix default).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,6 +43,36 @@ if [ -f "${ENV_DETECT}" ]; then
   # shellcheck source=/dev/null
   . "${ENV_DETECT}"
 fi
+
+# Tier filter (space-separated list, e.g. "1 2 3"). Empty/unset => run all.
+TIERS="${TIERS:-}"
+
+# Read a test's declared tier WITHOUT executing it, by grepping its `TIER=<n>`
+# line (shell tests write `echo "TIER=3"`, python tests print f"TIER={TIER}" but
+# also carry a literal `TIER = <n>` assignment). Returns the number, or empty if
+# the test declares no static tier.
+tier_of() {
+  local path="$1" t=""
+  # Shell style: echo "TIER=3"  /  python print "TIER=3"
+  t="$(grep -oE 'TIER=[0-9]+' "${path}" 2>/dev/null | head -n1 | sed 's/TIER=//')"
+  if [ -z "${t}" ]; then
+    # Python module constant: TIER = 3
+    t="$(grep -oE '^TIER[[:space:]]*=[[:space:]]*[0-9]+' "${path}" 2>/dev/null | head -n1 | grep -oE '[0-9]+')"
+  fi
+  printf '%s' "${t}"
+}
+
+# True when a tier is in the requested TIERS list (or when TIERS is empty).
+tier_in_scope() {
+  local t="$1" want
+  [ -z "${TIERS}" ] && return 0   # no filter -> everything is in scope
+  # A test with no declarable static tier is always run (cannot be filtered out).
+  [ -z "${t}" ] && return 0
+  for want in ${TIERS}; do
+    [ "${t}" = "${want}" ] && return 0
+  done
+  return 1
+}
 
 # Counters.
 n_pass=0; n_fail=0; n_skip=0; n_total=0
@@ -102,10 +140,19 @@ fi
 IFS=$'\n' tests=($(printf '%s\n' "${tests[@]}" | sort)) || true
 unset IFS
 
+n_filtered=0
 for t in "${tests[@]}"; do
   [ -f "${t}" ] || continue
+  if ! tier_in_scope "$(tier_of "${t}")"; then
+    n_filtered=$(( n_filtered + 1 ))
+    continue   # out-of-scope tier: not executed (belongs to another CI job)
+  fi
   run_one "${t}"
 done
+
+if [ -n "${TIERS}" ]; then
+  echo "TIERS filter active ('${TIERS}'): ran ${n_total}, skipped-by-tier ${n_filtered}." >&2
+fi
 
 # Write the report.
 {
@@ -116,6 +163,11 @@ done
   echo "Each smoke test runs with a ${PER_TEST_TIMEOUT}s timeout. Honesty rule:"
   echo "a tool is PASS only when its smoke test exits 0; absent tools are SKIP."
   echo
+  if [ -n "${TIERS}" ]; then
+    echo "Tier filter: \`TIERS=\"${TIERS}\"\` - only these tiers were run;"
+    echo "${n_filtered} out-of-scope test(s) were not executed (other CI job)."
+    echo
+  fi
   echo "Totals: ${n_pass} passed, ${n_fail} failed, ${n_skip} skipped (${n_total} tests)."
   echo
   echo "| tool | tier | version | PASS/FAIL/SKIP | seconds | note |"

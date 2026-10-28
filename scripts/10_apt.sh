@@ -36,6 +36,11 @@ else
   log "WARN: ${ENV_DETECT} not found; run scripts/00_detect.sh first. Continuing with defaults."
 fi
 
+# --- tier gating (CI job split: tiers 1-3 push, tiers 4-6 nightly) ----------
+# shellcheck source=/dev/null
+. "${SCRIPT_DIR}/_tiers.sh"
+[ -n "${TIERS:-}" ] && log "tier filter active: TIERS='${TIERS}' (only these tiers install)."
+
 # --- guard: apt must be present ---------------------------------------------
 if [ "${HAS_APT:-0}" != "1" ]; then
   log "SKIP: apt not available on this host; apt stage is authored for the Ubuntu 24.04 devcontainer."
@@ -57,6 +62,26 @@ apt_install() {
   cap ${SUDO} apt-get install -y --no-install-recommends "$@"
 }
 
+# apt_available: true only if the package exists in the apt indexes.
+# Usage: apt_available <pkg>
+# (defined here, outside any tier block, so every gated tier can use it.)
+apt_available() {
+  apt-cache policy "$1" 2>/dev/null | grep -q 'Candidate:' \
+    && ! apt-cache policy "$1" 2>/dev/null | grep -q 'Candidate: (none)'
+}
+
+# document_unsupported <Tool> <reason> <fallback>
+# (defined here, outside any tier block, so every gated tier can use it.)
+document_unsupported() {
+  local tool="$1" reason="$2" fallback="$3"
+  log "UNSUPPORTED: ${tool} - ${reason}"
+  {
+    echo ""
+    echo "<!-- auto-appended by scripts/10_apt.sh on $(date -u +%Y-%m-%dT%H:%M:%SZ) -->"
+    echo "- **${tool}**: ${reason} Fallback: ${fallback}"
+  } >> "${REPO_ROOT}/docs/UNSUPPORTED.md"
+}
+
 # ===========================================================================
 # TIER 1 (core): notes + diagrams + plotting.
 #   LaTeX stack (latex-extra/science/pictures/publishers/bibtex-extra + tools),
@@ -64,6 +89,7 @@ apt_install() {
 #   editors, numeric shells (octave/scilab), and the headless browser stack
 #   (chromium + xvfb) used by mermaid-cli and drawio-desktop CLI export.
 # ===========================================================================
+if tier_enabled 1; then
 log "TIER 1 apt packages (notes + diagrams + plotting)."
 apt_install \
   texlive-latex-extra \
@@ -99,12 +125,16 @@ else
   printf '\n- SKIPPED `texlive-fonts-extra` in 10_apt.sh because HEAVY_OK!=1 (RAM<16GB or disk<40GB). Fallback: core texlive fonts remain available; install manually if fonts are missing.\n' \
     >> "${REPO_ROOT}/docs/ENV_REPORT.md" || true
 fi
+else
+  log "SKIP TIER 1 apt packages (not in TIERS='${TIERS}')."
+fi
 
 # ===========================================================================
 # TIER 3 (fea): FEA / multiphysics / mesh / CFD system packages.
 #   Solvers/meshers/post from Ubuntu universe, plus headless offscreen GL
 #   (OSMesa/EGL) for PyVista/ParaView, plus the official OpenFOAM apt repo.
 # ===========================================================================
+if tier_enabled 3; then
 log "TIER 3 apt packages (FEA / multiphysics / mesh / CFD)."
 apt_install \
   calculix-ccx \
@@ -159,6 +189,9 @@ else
   printf '\n- OpenFOAM openfoam.org apt repo unreachable (no GPG key); Docker-image fallback (`scripts/50_docker_images.sh`, gated on HAS_DOCKER) applies. See docs/UNSUPPORTED.md.\n' \
     >> "${REPO_ROOT}/docs/ENV_REPORT.md" || true
 fi
+else
+  log "SKIP TIER 3 apt packages (not in TIERS='${TIERS}')."
+fi
 
 # ===========================================================================
 # TIER 4 (cad): CAD + dynamics system packages.
@@ -168,29 +201,12 @@ fi
 #   docs/UNSUPPORTED.md when absent instead of aborting the stage. OpenModelica
 #   comes from its own official apt repo.
 # ===========================================================================
+if tier_enabled 4; then
 log "TIER 4 apt packages (CAD + dynamics)."
 
 # FreeCAD: always attempt; FreeCADCmd is the headless console used by the smoke
 # test (tests/smoke/freecad_step.sh).
 apt_install freecad
-
-# apt_available: true only if the package exists in the apt indexes.
-# Usage: apt_available <pkg>
-apt_available() {
-  apt-cache policy "$1" 2>/dev/null | grep -q 'Candidate:' \
-    && ! apt-cache policy "$1" 2>/dev/null | grep -q 'Candidate: (none)'
-}
-
-# document_unsupported <Tool> <reason> <fallback>
-document_unsupported() {
-  local tool="$1" reason="$2" fallback="$3"
-  log "UNSUPPORTED: ${tool} - ${reason}"
-  {
-    echo ""
-    echo "<!-- auto-appended by scripts/10_apt.sh on $(date -u +%Y-%m-%dT%H:%M:%SZ) -->"
-    echo "- **${tool}**: ${reason} Fallback: ${fallback}"
-  } >> "${REPO_ROOT}/docs/UNSUPPORTED.md"
-}
 
 # CAMotics (G-code / CNC toolpath simulator) - guarded by availability.
 if apt_available camotics; then
@@ -236,6 +252,9 @@ else
     "could not fetch the build.openmodelica.org signing key (repo unreachable)." \
     "OpenModelica Docker image (openmodelica/openmodelica)."
 fi
+else
+  log "SKIP TIER 4 apt packages (not in TIERS='${TIERS}')."
+fi
 
 # ===========================================================================
 # TIER 6 (circuits): circuit simulation + EDA system packages.
@@ -243,11 +262,15 @@ fi
 #   headless `kicad-cli`), and Qucs-S (SPICE-based circuit simulator GUI with a
 #   CLI). Xyce is handled in scripts/40_binaries.sh (conda/binary if available).
 # ===========================================================================
+if tier_enabled 6; then
 log "TIER 6 apt packages (circuits / EDA)."
 apt_install \
   ngspice \
   kicad \
   qucs-s
+else
+  log "SKIP TIER 6 apt packages (not in TIERS='${TIERS}')."
+fi
 
 # ===========================================================================
 # TIER 5 (atomistic): atomistic / DFT / MD / microstructure engines.
@@ -258,6 +281,7 @@ apt_install \
 #   are only in some Ubuntu releases, so they are guarded by availability and
 #   documented in docs/UNSUPPORTED.md when absent (never abort the stage).
 # ===========================================================================
+if tier_enabled 5; then
 log "TIER 5 apt packages (atomistic / DFT / MD / microstructure)."
 apt_install \
   quantum-espresso \
@@ -294,6 +318,9 @@ else
     "not present in the apt indexes for this Ubuntu release." \
     "Build Neper from source (github.com/neperfepx/neper, needs GSL + nlopt + libscotch), or use DAMASK grid generation for polycrystals."
 fi
+else
+  log "SKIP TIER 5 apt packages (not in TIERS='${TIERS}')."
+fi
 
 # ===========================================================================
 # TIER 5 (microscopy / imaging binaries): Gwyddion via apt (preferred).
@@ -301,6 +328,7 @@ fi
 #   batch tools are driven in scripts/40_binaries.sh. Fiji/ImageJ and DREAM.3D
 #   are release-archive tools, also handled in scripts/40_binaries.sh.
 # ===========================================================================
+if tier_enabled 5; then
 log "TIER 5 imaging: Gwyddion (prefer apt)."
 if apt_available gwyddion; then
   apt_install gwyddion || document_unsupported "Gwyddion" \
@@ -310,6 +338,9 @@ else
   document_unsupported "Gwyddion" \
     "not present in the apt indexes for this Ubuntu release." \
     "Gwyddion Flatpak (flathub net.gwyddion.Gwyddion), or scikit-image / pyGwy for SPM data."
+fi
+else
+  log "SKIP TIER 5 imaging (not in TIERS='${TIERS}')."
 fi
 
 # ===========================================================================

@@ -31,6 +31,11 @@ if ! command -v npm >/dev/null 2>&1; then
   exit 0
 fi
 
+# --- tier gating (CI job split: tiers 1-3 push, tiers 4-6 nightly) ----------
+# shellcheck source=/dev/null
+. "${SCRIPT_DIR}/_tiers.sh"
+[ -n "${TIERS:-}" ] && log "tier filter active: TIERS='${TIERS}' (only these tiers install)."
+
 log "Starting node stage. node=$(node --version 2>/dev/null || echo n/a) npm=$(npm --version 2>/dev/null || echo n/a)"
 
 # Helper: install a global npm package under the 30-min cap.
@@ -47,6 +52,7 @@ npm_global() {
 #   chromium and pass --no-sandbox via a committed config file.
 # ===========================================================================
 
+if tier_enabled 1; then
 # Locate a system chromium for puppeteer to reuse (avoids downloading one).
 CHROMIUM_BIN=""
 for c in chromium chromium-browser google-chrome google-chrome-stable; do
@@ -80,6 +86,9 @@ npm_global "@mermaid-js/mermaid-cli"
 # ===========================================================================
 log "TIER 1: installing drawio-desktop (CLI export runs under xvfb-run)."
 npm_global "drawio-desktop"
+else
+  log "SKIP TIER 1 node tools (mermaid-cli, drawio-desktop) (not in TIERS='${TIERS}')."
+fi
 
 # ===========================================================================
 # TIER 2 (chemistry): Ketcher static site (epam/ketcher)
@@ -142,6 +151,7 @@ build_ketcher() {
   return 0
 }
 
+if tier_enabled 2; then
 if ! build_ketcher; then
   UNSUP="${REPO_ROOT}/docs/UNSUPPORTED.md"
   log "Ketcher build failed/capped; recording in ${UNSUP} and moving on."
@@ -154,5 +164,8 @@ if ! build_ketcher; then
     echo "  in the devcontainer/CI where node + network are available."
   } >> "${UNSUP}"
 fi
+else
+  log "SKIP TIER 2 Ketcher static-site build (not in TIERS='${TIERS}')."
+fi
 
-log "node stage complete (mermaid-cli + drawio-desktop + Ketcher; puppeteer->system chromium)."
+log "node stage complete (tier-gated: mermaid-cli + drawio-desktop + Ketcher; puppeteer->system chromium)."

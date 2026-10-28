@@ -27,6 +27,11 @@ else
   log "WARN: ${ENV_DETECT} not found; run scripts/00_detect.sh first. Continuing with defaults."
 fi
 
+# --- tier gating (CI job split: tiers 1-3 push, tiers 4-6 nightly) ----------
+# shellcheck source=/dev/null
+. "${SCRIPT_DIR}/_tiers.sh"
+[ -n "${TIERS:-}" ] && log "tier filter active: TIERS='${TIERS}' (only these tiers install)."
+
 log "Starting binaries stage. Installing into ${BIN_DIR}. HEAVY_OK=${HEAVY_OK:-0}"
 
 # Helper: download a URL to a destination under the 30-min cap.
@@ -89,7 +94,11 @@ install_typst() {
   log "ERROR: Typst install failed (primary + fallback). See docs/UNSUPPORTED.md."
   return 1
 }
-install_typst || log "Continuing despite Typst install failure (logged)."
+if tier_enabled 1; then
+  install_typst || log "Continuing despite Typst install failure (logged)."
+else
+  log "SKIP TIER 1 Typst (not in TIERS='${TIERS}')."
+fi
 
 # ===========================================================================
 # TIER 1: Quarto CLI (official release tarball from GitHub)
@@ -128,7 +137,11 @@ install_quarto() {
   log "ERROR: Quarto install failed (primary + fallback). See docs/UNSUPPORTED.md."
   return 1
 }
-install_quarto || log "Continuing despite Quarto install failure (logged)."
+if tier_enabled 1; then
+  install_quarto || log "Continuing despite Quarto install failure (logged)."
+else
+  log "SKIP TIER 1 Quarto (not in TIERS='${TIERS}')."
+fi
 
 # ===========================================================================
 # TIER 2: OpenCalphad (best-effort build from source) - sundmanbo/opencalphad
@@ -194,6 +207,7 @@ build_opencalphad() {
   return 0
 }
 
+if tier_enabled 2; then
 if ! build_opencalphad; then
   UNSUP="${REPO_ROOT}/docs/UNSUPPORTED.md"
   log "OpenCalphad build failed/capped; recording in ${UNSUP} and moving on."
@@ -206,6 +220,9 @@ if ! build_opencalphad; then
     echo "  Re-run \`scripts/40_binaries.sh\` in the devcontainer/CI where the Fortran"
     echo "  toolchain is present."
   } >> "${UNSUP}"
+fi
+else
+  log "SKIP TIER 2 OpenCalphad source build (not in TIERS='${TIERS}')."
 fi
 
 # ===========================================================================
@@ -241,6 +258,7 @@ install_julia() {
   return 1
 }
 
+if tier_enabled 4; then
 if ! install_julia; then
   UNSUP="${REPO_ROOT}/docs/UNSUPPORTED.md"
   log "Julia (juliaup) install failed/capped; recording in ${UNSUP} and moving on."
@@ -252,6 +270,9 @@ if ! install_julia; then
     echo "  from https://julialang.org/downloads/ and extract its \`bin/julia\`"
     echo "  onto PATH. Re-run \`scripts/40_binaries.sh\` in the devcontainer/CI."
   } >> "${UNSUP}"
+fi
+else
+  log "SKIP TIER 4 Julia (not in TIERS='${TIERS}')."
 fi
 
 # ===========================================================================
@@ -276,6 +297,7 @@ install_xyce() {
   return 1
 }
 
+if tier_enabled 6; then
 if ! install_xyce; then
   UNSUP="${REPO_ROOT}/docs/UNSUPPORTED.md"
   log "Xyce install unavailable here; recording in ${UNSUP} and moving on."
@@ -288,6 +310,9 @@ if ! install_xyce; then
     echo "  official Xyce binary installer from https://xyce.sandia.gov/ , or"
     echo "  **ngspice** (apt, \`scripts/10_apt.sh\`) as the drop-in SPICE engine."
   } >> "${UNSUP}"
+fi
+else
+  log "SKIP TIER 6 Xyce (not in TIERS='${TIERS}')."
 fi
 
 # ===========================================================================
@@ -343,6 +368,7 @@ install_fiji() {
   log "WARN: Fiji launcher ImageJ-linux64 not found after extraction."
   return 1
 }
+if tier_enabled 5; then
 if ! install_fiji; then
   document_unsupported_bin "Fiji/ImageJ" \
     "headless archive install failed or exceeded the 30-min cap on this host (needs 'unzip' + network). Fallback: run ImageJ via the official Docker image (fiji/fiji) with --headless, or use scikit-image / pyGwy for Python image analysis. Re-run scripts/40_binaries.sh in the devcontainer/CI."
@@ -396,10 +422,13 @@ else
   document_unsupported_bin "Gwyddion (headless)" \
     "not installed (apt gwyddion absent on this host). Fallback: apt 'gwyddion' in the devcontainer/CI (preferred), the Gwyddion Flatpak (net.gwyddion.Gwyddion), or scikit-image for Python SPM/AFM image analysis."
 fi
+else
+  log "SKIP TIER 5 Fiji/DREAM.3D/Gwyddion (not in TIERS='${TIERS}')."
+fi
 
 # ===========================================================================
 # TODO(tier5-heavy): static heavy solver binaries, gated by HEAVY_OK=1
 #   (none required: the Tier 5 DFT/MD engines come from apt in 10_apt.sh.)
 # ===========================================================================
 
-log "binaries stage complete (Typst + Quarto + OpenCalphad + Julia + Xyce + Fiji/DREAM.3D/Gwyddion into ${BIN_DIR})."
+log "binaries stage complete (tier-gated into ${BIN_DIR})."

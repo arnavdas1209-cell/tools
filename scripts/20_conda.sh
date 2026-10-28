@@ -32,6 +32,11 @@ if [ "${HAS_CONDA:-0}" != "1" ]; then
   exit 0
 fi
 
+# --- tier gating (CI job split: tiers 1-3 push, tiers 4-6 nightly) ----------
+# shellcheck source=/dev/null
+. "${SCRIPT_DIR}/_tiers.sh"
+[ -n "${TIERS:-}" ] && log "tier filter active: TIERS='${TIERS}' (only these tiers' envs create)."
+
 CONDA="${CONDA_BIN:-conda}"
 log "Starting conda stage using '${CONDA}'. HEAVY_OK=${HEAVY_OK:-0}"
 
@@ -55,6 +60,7 @@ ensure_env() {
 # ===========================================================================
 # TIER 3 (fea): the FEA / multiphysics / mesh / CFD env.
 # ===========================================================================
+if tier_enabled 3; then
 ensure_env fea envs/fea.yml
 
 # --- MOOSE / PRISMS-PF (OPTIONAL, heavy) ------------------------------------
@@ -77,10 +83,14 @@ else
   printf '\n- SKIPPED OPTIONAL `MOOSE`/`PRISMS-PF` in 20_conda.sh because HEAVY_OK!=1 (RAM<16GB or disk<40GB). Install path when enabled: conda `moose-dev` (never source-compiled). Fallback: FEniCSx / MFEM / deal.II (apt `libdeal.ii-dev`).\n' \
     >> "${REPO_ROOT}/docs/ENV_REPORT.md" || true
 fi
+else
+  log "SKIP TIER 3 conda env 'fea' (not in TIERS='${TIERS}')."
+fi
 
 # ===========================================================================
 # TIER 4 (cad): the CAD + dynamics env (CadQuery + build123d via pip).
 # ===========================================================================
+if tier_enabled 4; then
 ensure_env cad envs/cad.yml
 
 # --- PyChrono (multibody dynamics, best-effort) -----------------------------
@@ -96,6 +106,9 @@ log "TIER 4: best-effort PyChrono via the 'projectchrono' conda channel."
 #        printf '\n- PyChrono (conda '\''projectchrono'\'' channel) solve failed in 20_conda.sh; fallback: MBDyn (apt, scripts/10_apt.sh) or Project Chrono source build upstream. See docs/UNSUPPORTED.md.\n' \
 #          >> "${REPO_ROOT}/docs/UNSUPPORTED.md" || true; }
 log "PyChrono: install wired (conda 'projectchrono' channel, best-effort, no source build)."
+else
+  log "SKIP TIER 4 conda env 'cad' (not in TIERS='${TIERS}')."
+fi
 
 # ===========================================================================
 # TIER 5 (atomistic): the atomistic / DFT / MD / microstructure env.
@@ -106,6 +119,7 @@ log "PyChrono: install wired (conda 'projectchrono' channel, best-effort, no sou
 #   CP2K, SIESTA, GPAW) come from apt (scripts/10_apt.sh); this env drives and
 #   analyses them (ASE provides their calculators / file IO).
 # ===========================================================================
+if tier_enabled 5; then
 ensure_env atomistic envs/atomistic.yml
 
 # --- OPTIONAL ML note (torch CPU / mace-torch) ------------------------------
@@ -115,9 +129,18 @@ ensure_env atomistic envs/atomistic.yml
 # and document under docs/UNSUPPORTED.md - the rest of the atomistic env is
 # unaffected (ML is OPTIONAL per the task).
 log "TIER 5: atomistic env wired; OPTIONAL ML (scikit-learn/torch CPU/mace-torch) via its pip: section."
+else
+  log "SKIP TIER 5 conda env 'atomistic' (not in TIERS='${TIERS}')."
+fi
 
 # ===========================================================================
-# TODO(tier5-chem): ensure_env chem envs/chem.yml
+# TIER 2 (chem): ensure_env chem envs/chem.yml (wired when the chem env YAML
+# exists; gated to tier 2 so the CI job split honors it).
 # ===========================================================================
+if tier_enabled 2; then
+ensure_env chem envs/chem.yml
+else
+  log "SKIP TIER 2 conda env 'chem' (not in TIERS='${TIERS}')."
+fi
 
-log "conda stage complete (fea + cad + atomistic envs wired; chem pending)."
+log "conda stage complete (tier-gated envs wired per TIERS='${TIERS:-all}')."

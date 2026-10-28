@@ -31,8 +31,16 @@ detect:
 
 # setup: run detection first, then each install stage in order. Each stage is
 # guarded with `|| ...` so a failing stage is logged and setup continues.
+#
+# Tier filtering: the optional TIERS variable (space-separated tier numbers,
+# e.g. `make setup TIERS="1 2 3"`) is exported to every stage, which installs
+# only the requested tiers' packages (see scripts/_tiers.sh). The CI workflow
+# uses this to split work: the push/PR job runs tiers 1-3 and the nightly job
+# runs tiers 4-6. When TIERS is unset, every stage installs all tiers.
+export TIERS
 setup:
 	@bash $(SCRIPTS)/00_detect.sh
+	@echo "setup: TIERS='$(TIERS)' (empty => all tiers)"
 	@for stage in 10_apt 20_conda 30_node 40_binaries 50_docker_images; do \
 		echo "=== running $$stage ==="; \
 		bash $(SCRIPTS)/$$stage.sh || echo "WARN: stage $$stage exited nonzero (logged, continuing)"; \

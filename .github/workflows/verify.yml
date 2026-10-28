@@ -1,8 +1,10 @@
 name: verify
 
 # Tiers 1-3 run on every push and pull request.
-# Tiers 4-5 (heavy: atomistic, cad, chem, MOOSE/OpenFOAM/Code_Aster) run on a
-# nightly schedule to keep per-push CI fast.
+# Tiers 4-6 (heavy: cad/dynamics, atomistic, circuits; MOOSE/OpenFOAM/Code_Aster)
+# run on a nightly schedule to keep per-push CI fast. The split is enforced by
+# the TIERS env var, which scripts/_tiers.sh + scripts/90_verify.sh honor so
+# each job installs and tests only its own tiers.
 on:
   push:
     branches: ["**"]
@@ -56,6 +58,8 @@ jobs:
         run: make setup
 
       - name: Verify (smoke tests)
+        env:
+          TIERS: "1 2 3"
         run: make verify
 
       - name: Upload verify report + artifacts
@@ -71,10 +75,10 @@ jobs:
           if-no-files-found: ignore
 
   # -------------------------------------------------------------------------
-  # Nightly path: heavy tiers 4-5.
+  # Nightly path: heavy tiers 4-6.
   # -------------------------------------------------------------------------
-  tiers-4-5:
-    name: tiers 4-5 (atomistic, cad, chem, heavy)
+  tiers-4-6:
+    name: tiers 4-6 (cad, atomistic, circuits, heavy)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 300
@@ -105,17 +109,19 @@ jobs:
 
       - name: Setup (install stages)
         env:
-          TIERS: "4 5"
+          TIERS: "4 5 6"
         run: make setup
 
       - name: Verify (smoke tests)
+        env:
+          TIERS: "4 5 6"
         run: make verify
 
       - name: Upload verify report + artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: verify-tiers-4-5
+          name: verify-tiers-4-6
           path: |
             docs/VERIFY_REPORT.md
             docs/ENV_REPORT.md

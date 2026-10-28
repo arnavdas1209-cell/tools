@@ -34,6 +34,11 @@ if [ "${RUNTIME}" = "none" ]; then
   exit 0
 fi
 
+# --- tier gating (CI job split: tiers 1-3 push, tiers 4-6 nightly) ----------
+# shellcheck source=/dev/null
+. "${SCRIPT_DIR}/_tiers.sh"
+[ -n "${TIERS:-}" ] && log "tier filter active: TIERS='${TIERS}' (only these tiers pull images)."
+
 log "Starting container-image stage using '${RUNTIME}'. HEAVY_OK=${HEAVY_OK:-0}"
 
 # Helper: pull an image with the detected runtime under the 30-min cap.
@@ -55,6 +60,7 @@ pull_image() {
 #   we pull the docker:// ref the same way. The openfoam smoke test uses the
 #   native install when present and otherwise SKIPs.
 # ===========================================================================
+if tier_enabled 3; then
 log "TIER 3: OpenFOAM fallback container image."
 pull_image "opencfd/openfoam-default:latest"
 
@@ -68,5 +74,8 @@ pull_image "opencfd/openfoam-default:latest"
 # ===========================================================================
 log "TIER 3: Code_Aster container image."
 pull_image "quay.io/codeaster/codeaster:latest"
+else
+  log "SKIP TIER 3 container images (OpenFOAM/Code_Aster) (not in TIERS='${TIERS}')."
+fi
 
-log "container-image stage skeleton complete (no images wired yet)."
+log "container-image stage complete (tier-gated per TIERS='${TIERS:-all}')."
