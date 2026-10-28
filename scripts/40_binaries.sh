@@ -209,7 +209,89 @@ if ! build_opencalphad; then
 fi
 
 # ===========================================================================
+# TIER 4: Julia via juliaup (official installer).
+#   juliaup is Julia's official version manager. The installer script is
+#   fetched from https://install.julialang.org and run non-interactively
+#   (-y) under the 30-min cap. It installs into ~/.juliaup and symlinks the
+#   `julia`/`juliaup` launchers into ~/.juliaup/bin; we additionally symlink
+#   `julia` into ${BIN_DIR} so it is on the workspace PATH. On failure we do
+#   NOT loop - we log it and document the fallback (official release tarball).
+# ===========================================================================
+install_julia() {
+  log "TIER 4: installing Julia via juliaup (official installer, capped at 30 min)."
+  if ! command -v curl >/dev/null 2>&1; then
+    log "ERROR: curl not available; cannot run the juliaup installer."
+    return 1
+  fi
+
+  # The installer respects JULIAUP_HOME / defaults to ~/.juliaup. Run it with
+  # --yes so it never prompts, and --default-channel release for a stable Julia.
+  if cap sh -c 'curl -fsSL https://install.julialang.org | sh -s -- --yes --default-channel release'; then
+    local juliaup_bin="${HOME}/.juliaup/bin"
+    if [ -x "${juliaup_bin}/julia" ]; then
+      ln -sf "${juliaup_bin}/julia" "${BIN_DIR}/julia"
+      ln -sf "${juliaup_bin}/juliaup" "${BIN_DIR}/juliaup" 2>/dev/null || true
+      log "Installed Julia via juliaup -> ${BIN_DIR}/julia"
+      return 0
+    fi
+    log "WARN: juliaup installer ran but ${juliaup_bin}/julia not found."
+    return 1
+  fi
+  log "ERROR: juliaup installer failed or exceeded the 30-min cap."
+  return 1
+}
+
+if ! install_julia; then
+  UNSUP="${REPO_ROOT}/docs/UNSUPPORTED.md"
+  log "Julia (juliaup) install failed/capped; recording in ${UNSUP} and moving on."
+  {
+    echo ""
+    echo "<!-- auto-appended by scripts/40_binaries.sh on $(date -u +%Y-%m-%dT%H:%M:%SZ) -->"
+    echo "- **Julia** (juliaup): official installer failed or exceeded the 30-min"
+    echo "  cap on this host. Fallback: download the official Julia release tarball"
+    echo "  from https://julialang.org/downloads/ and extract its \`bin/julia\`"
+    echo "  onto PATH. Re-run \`scripts/40_binaries.sh\` in the devcontainer/CI."
+  } >> "${UNSUP}"
+fi
+
+# ===========================================================================
+# TIER 6: Xyce (Sandia's parallel SPICE engine).
+#   Xyce is NOT on PyPI and has no official Ubuntu apt package. We try the
+#   conda-forge `xyce` package first (when conda is present), then document the
+#   official binary installer / source-build fallback if unavailable. We never
+#   compile from source here (not an allowed source build), and we do not loop.
+# ===========================================================================
+install_xyce() {
+  log "TIER 6: attempting Xyce via conda-forge (if conda is present)."
+  local conda_bin="${CONDA_BIN:-conda}"
+  if [ "${HAS_CONDA:-0}" = "1" ] && command -v "${conda_bin}" >/dev/null 2>&1; then
+    if cap "${conda_bin}" create -y -n xyce -c conda-forge xyce; then
+      log "Installed Xyce via conda-forge into env 'xyce'."
+      return 0
+    fi
+    log "WARN: conda-forge 'xyce' solve failed."
+    return 1
+  fi
+  log "conda not available; cannot install Xyce via conda-forge on this host."
+  return 1
+}
+
+if ! install_xyce; then
+  UNSUP="${REPO_ROOT}/docs/UNSUPPORTED.md"
+  log "Xyce install unavailable here; recording in ${UNSUP} and moving on."
+  {
+    echo ""
+    echo "<!-- auto-appended by scripts/40_binaries.sh on $(date -u +%Y-%m-%dT%H:%M:%SZ) -->"
+    echo "- **Xyce** (Sandia parallel SPICE): no PyPI wheel and no official apt"
+    echo "  package. Primary path: conda-forge \`xyce\` (attempted in"
+    echo "  \`scripts/40_binaries.sh\` when conda is present). Fallback: the"
+    echo "  official Xyce binary installer from https://xyce.sandia.gov/ , or"
+    echo "  **ngspice** (apt, \`scripts/10_apt.sh\`) as the drop-in SPICE engine."
+  } >> "${UNSUP}"
+fi
+
+# ===========================================================================
 # TODO(tier5-heavy): static heavy solver binaries, gated by HEAVY_OK=1
 # ===========================================================================
 
-log "binaries stage complete (Typst + Quarto CLI + best-effort OpenCalphad into ${BIN_DIR})."
+log "binaries stage complete (Typst + Quarto CLI + OpenCalphad + Julia/juliaup + Xyce into ${BIN_DIR})."

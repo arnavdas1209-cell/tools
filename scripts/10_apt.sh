@@ -161,8 +161,93 @@ else
 fi
 
 # ===========================================================================
-# TODO(tier4-cad): CAD/graphics system deps (inkscape, drawio deps, chromium)
+# TIER 4 (cad): CAD + dynamics system packages.
+#   FreeCAD provides the headless console binary `FreeCADCmd`. CAMotics (G-code
+#   simulator) and MBDyn (multibody dynamics) are only in some Ubuntu releases,
+#   so they are guarded by availability (apt-cache policy) and documented in
+#   docs/UNSUPPORTED.md when absent instead of aborting the stage. OpenModelica
+#   comes from its own official apt repo.
 # ===========================================================================
+log "TIER 4 apt packages (CAD + dynamics)."
+
+# FreeCAD: always attempt; FreeCADCmd is the headless console used by the smoke
+# test (tests/smoke/freecad_step.sh).
+apt_install freecad
+
+# apt_available: true only if the package exists in the apt indexes.
+# Usage: apt_available <pkg>
+apt_available() {
+  apt-cache policy "$1" 2>/dev/null | grep -q 'Candidate:' \
+    && ! apt-cache policy "$1" 2>/dev/null | grep -q 'Candidate: (none)'
+}
+
+# document_unsupported <Tool> <reason> <fallback>
+document_unsupported() {
+  local tool="$1" reason="$2" fallback="$3"
+  log "UNSUPPORTED: ${tool} - ${reason}"
+  {
+    echo ""
+    echo "<!-- auto-appended by scripts/10_apt.sh on $(date -u +%Y-%m-%dT%H:%M:%SZ) -->"
+    echo "- **${tool}**: ${reason} Fallback: ${fallback}"
+  } >> "${REPO_ROOT}/docs/UNSUPPORTED.md"
+}
+
+# CAMotics (G-code / CNC toolpath simulator) - guarded by availability.
+if apt_available camotics; then
+  apt_install camotics || document_unsupported "CAMotics" \
+    "apt install failed on this host (devcontainer/CI)." \
+    "CadQuery/build123d toolpaths; run the CAMotics AppImage from its GitHub releases."
+else
+  document_unsupported "CAMotics" \
+    "not present in the apt indexes for this Ubuntu release." \
+    "Install the official CAMotics AppImage from GitHub releases, or use CadQuery/build123d for CAM scripting."
+fi
+
+# MBDyn (multibody dynamics) - guarded by availability.
+if apt_available mbdyn; then
+  apt_install mbdyn || document_unsupported "MBDyn" \
+    "apt install failed on this host (devcontainer/CI)." \
+    "PyChrono (conda 'projectchrono' channel, see scripts/20_conda.sh) for multibody dynamics."
+else
+  document_unsupported "MBDyn" \
+    "not present in the apt indexes for this Ubuntu release." \
+    "PyChrono (conda 'projectchrono' channel, see scripts/20_conda.sh), or build MBDyn from source upstream."
+fi
+
+# OpenModelica: official apt repo (build.openmodelica.org). Add the signing key
+# + source list, refresh, then install. If the repo is unreachable we do NOT
+# loop - log it and document the OpenModelica Docker image fallback.
+log "OpenModelica: attempting official build.openmodelica.org apt repo."
+if curl -fsSL https://build.openmodelica.org/apt/openmodelica.asc 2>/dev/null \
+      | ${SUDO} gpg --dearmor -o /usr/share/keyrings/openmodelica-keyring.gpg 2>/dev/null; then
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/openmodelica-keyring.gpg] https://build.openmodelica.org/apt $(. /etc/os-release && echo "${UBUNTU_CODENAME:-noble}") release" \
+    | ${SUDO} tee /etc/apt/sources.list.d/openmodelica.list >/dev/null
+  if cap ${SUDO} apt-get update; then
+    apt_install openmodelica || document_unsupported "OpenModelica" \
+      "'openmodelica' package not resolvable from build.openmodelica.org." \
+      "OpenModelica Docker image (openmodelica/openmodelica), or Julia/OpenModelica via the 'omc' binary release."
+  else
+    document_unsupported "OpenModelica" \
+      "build.openmodelica.org apt index unreachable (offline/air-gapped)." \
+      "OpenModelica Docker image (openmodelica/openmodelica)."
+  fi
+else
+  document_unsupported "OpenModelica" \
+    "could not fetch the build.openmodelica.org signing key (repo unreachable)." \
+    "OpenModelica Docker image (openmodelica/openmodelica)."
+fi
+
+# ===========================================================================
+# TIER 6 (circuits): circuit simulation + EDA system packages.
+#   ngspice (SPICE engine; also the PySpice backend), KiCad (we only use the
+#   headless `kicad-cli`), and Qucs-S (SPICE-based circuit simulator GUI with a
+#   CLI). Xyce is handled in scripts/40_binaries.sh (conda/binary if available).
+# ===========================================================================
+log "TIER 6 apt packages (circuits / EDA)."
+apt_install \
+  ngspice \
+  kicad \
+  qucs-s
 
 # ===========================================================================
 # TODO(tier5-heavy): heavy system deps, gated by HEAVY_OK=1

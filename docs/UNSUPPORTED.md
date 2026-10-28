@@ -109,3 +109,77 @@ honesty rule.
 | Ansys / Abaqus / COMSOL (FEA / multiphysics) | CalculiX, Code_Aster, Elmer, FEniCSx (also MFEM, deal.II/PRISMS-PF, MOOSE) |
 | Ansys Fluent / CFX (CFD) | OpenFOAM, SU2 (also code-saturne) |
 | SALOME (pre/post + CAE integration) | Gmsh + meshio + ParaView (paraview-python); FreeCAD for CAD |
+
+## Tier 4 (CAD + dynamics)
+
+On the validation host (Amazon Linux 2023: no apt, no conda, and a locked-down
+`dnf` that cannot write its logs so no system packages can be added), the
+CAD/dynamics tools split three ways:
+
+- **Julia** (via `juliaup`) **actually PASSED** on this host: the official
+  `install.julialang.org` installer ran under the 30-min cap (network open) and
+  installed Julia 1.13.3; `tests/smoke/julia.sh` ran a trivial script
+  (`sum(1:10)==55`). See `docs/VERIFY_REPORT.md`.
+- **CadQuery** installs from PyPI wheels here, but its native **OCP**
+  (OpenCascade) extension needs system OpenGL (`libGL.so.1`), which is apt/dnf
+  provided and **absent** on this host; `dnf` is read-only so it cannot be
+  added. The smoke test therefore **SKIPs** (exit 2) with that reason, running
+  for real in the devcontainer/CI where `libgl1-mesa-dri`/`libglu1-mesa` exist.
+- The rest need apt/conda and are **SKIP here**, running for real in the Ubuntu
+  24.04 devcontainer / CI. These SKIPs are not failures (exit 2 + NOTE).
+
+| Tool | Tier | Reason skipped/failed (on host) | Fallback / where it runs | Final status |
+| --- | --- | --- | --- | --- |
+| FreeCAD (FreeCADCmd) | 4 | `FreeCADCmd` is apt-only (`freecad`); absent on host | apt `freecad` in devcontainer/CI; the smoke test builds a box and exports STEP headlessly | SKIP (host) |
+| CadQuery | 4 | Installs from PyPI, but OCP native import needs system OpenGL (`libGL.so.1`); absent and un-installable (`dnf` read-only) on host | pip `cadquery` in the `cad` env (`envs/cad.yml`) + apt `libgl1-mesa-dri`/`libglu1-mesa` in devcontainer/CI; then it exports STL for real | SKIP (host) |
+| build123d | 4 | Same OCP/OpenGL dependency as CadQuery | pip `build123d` in the `cad` env; covered by the CadQuery STL test in CI | SKIP (host) |
+| OpenSCAD | 4/1 | `openscad` is apt-only; absent on host (Tier 1 test already exports STL) | apt `openscad` in devcontainer/CI (`tests/smoke/openscad.sh`) | SKIP (host) |
+| OpenModelica (omc) | 4 | `omc` ships via the official build.openmodelica.org apt repo; absent on host | apt `openmodelica` (official repo added in `scripts/10_apt.sh`) in devcontainer/CI; fallback `openmodelica/openmodelica` Docker image | SKIP (host) |
+| Julia (juliaup) | 4 | n/a - **PASSED on host** via the official juliaup installer | `scripts/40_binaries.sh` (juliaup, 30-min cap); fallback: official Julia release tarball from julialang.org | **PASS (host)** |
+| CAMotics | 4 | Not present in the apt indexes for every Ubuntu release; guarded by availability in `scripts/10_apt.sh` | Official CAMotics AppImage from GitHub releases, or CadQuery/build123d for CAM scripting | SKIP / guarded |
+| MBDyn | 4 | Not present in the apt indexes for every Ubuntu release; guarded by availability in `scripts/10_apt.sh` | PyChrono (conda `projectchrono` channel, `scripts/20_conda.sh`), or MBDyn source build upstream | SKIP / guarded |
+| PyChrono | 4 | conda-only on the dedicated `projectchrono` channel; no conda on host | conda `projectchrono` channel (best-effort, `scripts/20_conda.sh`); never source-built here. Fallback: MBDyn (apt) | SKIP (host) |
+
+> `julia` is the Tier 4 test that **actually PASSED** on this host (juliaup,
+> network open). Everything else requires apt/conda/system OpenGL and is SKIP
+> here, staged for the devcontainer/CI.
+
+> **FreeCAD vs CadQuery/build123d:** `FreeCADCmd` (apt `freecad`) is the headless
+> console that scripts a box + STEP export; the `cad` conda env
+> (`envs/cad.yml`) provides the scriptable CadQuery + build123d kernels (pip,
+> OCP wheels) that export STL. The two are complementary CAD paths.
+
+## Tier 6 (circuits)
+
+On the validation host the circuit/EDA engines are apt/conda-based and are
+**SKIP here**, running for real in the Ubuntu 24.04 devcontainer / CI. The one
+pure-Python piece, **schemdraw**, installs from PyPI and **actually PASSED**,
+drawing an RC circuit to PNG. These SKIPs are not failures (exit 2 + NOTE).
+
+| Tool | Tier | Reason skipped/failed (on host) | Fallback / where it runs | Final status |
+| --- | --- | --- | --- | --- |
+| ngspice | 6 | `ngspice` is apt-only; absent on host | apt `ngspice` in devcontainer/CI; the smoke test runs an RC transient. Also the PySpice backend engine | SKIP (host) |
+| KiCad (kicad-cli) | 6 | `kicad-cli` is apt-only (`kicad`); absent on host. We use only the headless CLI, never the GUI | apt `kicad` in devcontainer/CI; the smoke test reports `kicad-cli version` and exports a minimal schematic to SVG | SKIP (host) |
+| Qucs-S | 6 | apt-only (`qucs-s`); absent on host | apt `qucs-s` in devcontainer/CI; SPICE-based circuit simulation | SKIP (host) |
+| schemdraw | 6 | n/a - **PASSED on host** (pip) | conda-forge/pip `schemdraw` in the core env; drew an RC circuit to `figures/python/schemdraw_rc.png` | **PASS (host)** |
+| PySpice | 6 | Installs from pip/conda, but needs the **ngspice shared library** (apt-only) at runtime; absent on host | `pyspice` in `envs/core.yml` + apt `ngspice` (shared lib) in devcontainer/CI | SKIP (host) |
+| Xyce | 6 | No PyPI wheel and no official apt package; conda-forge `xyce` only (no conda on host) | conda-forge `xyce` (attempted in `scripts/40_binaries.sh`), else official Xyce binary installer from xyce.sandia.gov, else **ngspice** as the drop-in SPICE engine | SKIP (host) |
+
+> `schemdraw_rc` is the Tier 6 test that **actually PASSED** on this host (pip),
+> writing `figures/python/schemdraw_rc.png`. Everything else needs apt/conda and
+> is SKIP here, staged for the devcontainer/CI.
+
+> **CircuiTikZ (LaTeX):** the `circuitikz` package is loaded by
+> `templates/block-notes.tex` (Tier 1) and exercised by `notes/latex/demo.tex`
+> (a series RC circuit), so no extra Tier 6 LaTeX work is needed; it builds with
+> the Tier 1 `texlive-*` stack in the devcontainer/CI.
+
+### Proprietary-tool fallback mapping (Tiers 4 & 6)
+
+| Proprietary tool | Open-source fallback(s) in this workspace |
+| --- | --- |
+| SolidWorks / Autodesk Fusion / Fusion 360 (CAD) | FreeCAD (FreeCADCmd), CadQuery, build123d (also OpenSCAD) |
+| MATLAB / Simulink (modeling + dynamics) | Octave, Scilab/Xcos, Julia, OpenModelica |
+| ADAMS / RecurDyn (multibody dynamics) | PyChrono (Project Chrono), MBDyn |
+| LTspice / PSpice (SPICE) | ngspice, Xyce (also PySpice as a Python front-end) |
+| Altium / OrCAD (EDA / schematic + PCB) | KiCad (kicad-cli), Qucs-S |

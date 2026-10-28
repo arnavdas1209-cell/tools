@@ -1,0 +1,28 @@
+# envs/cad.yml - Tier 4 "cad" conda environment (CAD + dynamics).
+#
+# Create/update with:
+#   mamba env create -f envs/cad.yml      # or: conda env create -f envs/cad.yml
+#   mamba env update -f envs/cad.yml --prune
+#
+# Pin versions with `conda env export --from-history` (or conda-lock) after a
+# successful solve. Never use sudo inside this env.
+#
+# NOTE on FreeCAD: FreeCAD's headless console binary `FreeCADCmd` is provided by
+# the apt `freecad` package (installed in scripts/10_apt.sh), NOT by this conda
+# env. This env covers the scriptable, pip/conda-installable CAD kernels
+# (CadQuery + build123d, both built on the OCP / OpenCascade wheels). The
+# FreeCAD smoke test (tests/smoke/freecad_step.sh) drives FreeCADCmd directly.
+name: cad
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  # CadQuery and build123d install cleanly from PyPI wheels (they pull the OCP
+  # OpenCascade bindings as wheel dependencies), so we keep them under pip: to
+  # match the task's "pip inside the env" instruction and to avoid conda-forge
+  # solver churn around the OCP build. conda-forge also ships `cadquery` if a
+  # pure-conda solve is preferred in the devcontainer.
+  - pip
+  - pip:
+      - cadquery
+      - build123d

@@ -128,6 +128,32 @@ disk >= 40 GB). `scripts/20_conda.sh` uses the conda `moose-dev` package and
 [`docs/UNSUPPORTED.md`](UNSUPPORTED.md) for the Gmsh + meshio + ParaView
 fallback.
 
+## CAD + dynamics (Tier 4)
+
+The `cad` conda env (`envs/cad.yml`) provides the scriptable CAD kernels
+**CadQuery** and **build123d** (installed via `pip` in the env's `pip:` section;
+they pull the OCP OpenCascade wheels). **FreeCAD**'s headless console
+`FreeCADCmd` comes from apt in `scripts/10_apt.sh` and is the box-to-STEP path.
+Modeling/dynamics tooling: **OpenModelica** (`omc`) from its official apt repo,
+**Julia** via `juliaup` (`scripts/40_binaries.sh`, 30-min cap), **MBDyn** and
+**CAMotics** guarded by apt availability, and **PyChrono** best-effort from the
+`projectchrono` conda channel (never source-built). Smoke tests:
+`freecad_step.sh` (box + STEP), `cadquery_stl.py` (solid + STL), `openscad.sh`
+(STL), `openmodelica.sh` (trivial model), `julia.sh` (trivial script).
+
+## Circuits (Tier 6)
+
+Circuit simulation + EDA comes from apt in `scripts/10_apt.sh`: **ngspice**
+(SPICE engine, also the PySpice backend), **KiCad** (we use only the headless
+`kicad-cli`), and **Qucs-S**. **Xyce** is best-effort via conda-forge in
+`scripts/40_binaries.sh` (fallback: ngspice). **PySpice** (a Python SPICE
+front-end) is added to the core env (`envs/core.yml`); it needs the apt-provided
+ngspice shared library at runtime. LaTeX circuit drawing uses **CircuiTikZ**,
+already loaded by `templates/block-notes.tex` and exercised by
+`notes/latex/demo.tex`. Smoke tests: `ngspice.sh` (RC transient), `kicad.sh`
+(`kicad-cli` version + minimal schematic SVG export), `schemdraw_rc.py` (RC
+circuit to PNG).
+
 ## Honesty rule
 
 A tool is never marked **PASS** until its smoke test actually passes. Anything

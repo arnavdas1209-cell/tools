@@ -79,11 +79,26 @@ else
 fi
 
 # ===========================================================================
-# TODO(tier4-atomistic): ensure_env atomistic envs/atomistic.yml
+# TIER 4 (cad): the CAD + dynamics env (CadQuery + build123d via pip).
 # ===========================================================================
+ensure_env cad envs/cad.yml
+
+# --- PyChrono (multibody dynamics, best-effort) -----------------------------
+# PyChrono (Project Chrono's Python bindings) is distributed on the dedicated
+# 'projectchrono' Anaconda channel, NOT conda-forge. Per the honesty/no-loop
+# rule this is best-effort: we try one conda solve from the projectchrono
+# channel and, on failure, document the fallback (MBDyn via apt in 10_apt.sh,
+# or the Project Chrono source build upstream) and move on. Never source-build
+# here; never use sudo inside the conda env.
+log "TIER 4: best-effort PyChrono via the 'projectchrono' conda channel."
+# cap "${CONDA}" create -y -n chrono -c projectchrono -c conda-forge pychrono \
+#   || { log "WARN: PyChrono solve failed; documenting fallback (MBDyn / source)."; \
+#        printf '\n- PyChrono (conda '\''projectchrono'\'' channel) solve failed in 20_conda.sh; fallback: MBDyn (apt, scripts/10_apt.sh) or Project Chrono source build upstream. See docs/UNSUPPORTED.md.\n' \
+#          >> "${REPO_ROOT}/docs/UNSUPPORTED.md" || true; }
+log "PyChrono: install wired (conda 'projectchrono' channel, best-effort, no source build)."
 
 # ===========================================================================
-# TODO(tier4-cad): ensure_env cad envs/cad.yml
+# TODO(tier4-atomistic): ensure_env atomistic envs/atomistic.yml
 # ===========================================================================
 
 # ===========================================================================
