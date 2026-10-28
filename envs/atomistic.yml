@@ -1,0 +1,69 @@
+# envs/atomistic.yml - Tier 5 "atomistic" conda environment.
+#   Atomistic / DFT / MD / microstructure Python stack.
+#
+# Create/update with:
+#   mamba env create -f envs/atomistic.yml   # or: conda env create -f envs/atomistic.yml
+#   mamba env update -f envs/atomistic.yml --prune
+#
+# Pin versions with `conda env export --from-history` (or conda-lock) after a
+# successful solve. Never use sudo inside this env.
+#
+# Scope: the scriptable, conda/pip-installable atomistic + microstructure
+# packages. The heavy DFT/MD *engines* (Quantum ESPRESSO, LAMMPS, GROMACS,
+# ABINIT, CP2K, SIESTA, GPAW) come from apt in scripts/10_apt.sh - this env
+# drives/analyses them (ASE provides calculators/IO for QE, LAMMPS, GROMACS,
+# etc.). conda-forge also ships those engines if an apt-free path is wanted.
+#
+# conda-forge availability caveats (honesty rule - do NOT loop on a bad solve):
+#   - ase, pymatgen, spglib, phonopy, matminer, orix, kikuchipy, py3Dmol:
+#     all on conda-forge; the primary path.
+#   - mp-api: on conda-forge; falls back to `pip install mp-api` if the conda
+#     solve lags behind a new release. Needs a Materials Project API key at
+#     runtime (MP_API_KEY) - network-gated, so the smoke tests do not call it.
+#   - pyxem: on conda-forge; pulls hyperspy. If the solve conflicts, pip
+#     `pyxem` is the fallback.
+#   - damask: the DAMASK Python grid-solver package `damask` is on PyPI; the
+#     full DAMASK solver (damask-grid, needs PETSc) is a separate apt/spack
+#     build. We take the pip `damask` Python package here and document the
+#     solver fallback in docs/UNSUPPORTED.md.
+#   - ovito: the OVITO Python module ships as a pip wheel ("ovito") and as a
+#     conda-forge package on the `https://conda.ovito.org` channel. We use the
+#     pip wheel per the task; note its native build needs system OpenGL/Qt
+#     (libGL) to import, so it SKIPs on hosts without them (see UNSUPPORTED.md).
+#
+# OPTIONAL ML stack (scikit-learn / torch CPU / mace-torch): kept in the pip:
+# section below, clearly marked OPTIONAL. torch is a large CPU wheel; it is
+# pulled from the PyTorch CPU wheel index to avoid CUDA downloads. mace-torch
+# (MACE interatomic potentials) depends on torch.
+name: atomistic
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - ase
+  - pymatgen
+  - matminer
+  - mp-api
+  - spglib
+  - phonopy
+  - py3Dmol
+  - orix
+  - pyxem
+  - kikuchipy
+  - pip
+  - pip:
+      # DAMASK Python package (grid-solver bindings live on PyPI).
+      - damask
+      # OVITO Python module (pip wheel per the task). Native import needs
+      # system OpenGL/Qt (libGL); SKIPs honestly where those are absent.
+      - ovito
+      # --- OPTIONAL ML stack (classical + deep-learning potentials) ---------
+      # scikit-learn: classical ML for materials descriptors (pairs with
+      # matminer). Lightweight, always safe to install.
+      - scikit-learn
+      # torch (CPU-only build) from the PyTorch CPU wheel index - avoids the
+      # large CUDA wheels. OPTIONAL; gate on install time (30-min cap).
+      - --extra-index-url https://download.pytorch.org/whl/cpu
+      - torch
+      # mace-torch: MACE equivariant interatomic potentials (depends on torch).
+      - mace-torch

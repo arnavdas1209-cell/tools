@@ -183,3 +183,65 @@ drawing an RC circuit to PNG. These SKIPs are not failures (exit 2 + NOTE).
 | ADAMS / RecurDyn (multibody dynamics) | PyChrono (Project Chrono), MBDyn |
 | LTspice / PSpice (SPICE) | ngspice, Xyce (also PySpice as a Python front-end) |
 | Altium / OrCAD (EDA / schematic + PCB) | KiCad (kicad-cli), Qucs-S |
+
+## Tier 5 (atomistic / DFT / MD / microstructure)
+
+On the validation host (Amazon Linux 2023: no apt, no conda, and a locked-down
+`dnf` that cannot add system packages), the Tier 5 tools split three ways:
+
+- **ASE + pymatgen + spglib** and **orix** install from PyPI wheels and
+  **actually PASSED** on this host: `ase_pymatgen.py` built BCC Fe and pymatgen
+  reported space group **Im-3m (No. 229)** - the correctness assertion;
+  `orix_polefigure.py` loaded the cubic `m-3m` (Oh) symmetry and plotted a (001)
+  pole figure to `figures/python/orix_polefigure.png`. See
+  `docs/VERIFY_REPORT.md`.
+- The **OPTIONAL ML stack**: `torch` (CPU wheel from the PyTorch CPU index)
+  installed for real and `torch_mace.py` ran a CPU tensor op (**PASS**);
+  `mace-torch` is OPTIONAL (absent here, documented).
+- The heavy **DFT/MD engines** (Quantum ESPRESSO, LAMMPS, GROMACS, ABINIT,
+  CP2K, SIESTA, GPAW), **Neper**, **OVITO** (needs system OpenGL/Qt), and the
+  **Fiji/DREAM.3D/Gwyddion** imaging tools are apt/conda/system-GL/release-
+  archive based and are **SKIP here**, running for real in the Ubuntu 24.04
+  devcontainer / CI. These SKIPs are not failures (exit 2 + NOTE).
+
+| Tool | Tier | Reason skipped/failed (on host) | Fallback / where it runs | Final status |
+| --- | --- | --- | --- | --- |
+| ASE + pymatgen + spglib | 5 | n/a - **PASSED on host** (pip) | conda/pip in the `atomistic` env (`envs/atomistic.yml`); BCC Fe -> Im-3m (229) | **PASS (host)** |
+| orix | 5 | n/a - **PASSED on host** (pip) | conda-forge/pip `orix` in the `atomistic` env; wrote `figures/python/orix_polefigure.png` | **PASS (host)** |
+| torch (CPU) / mace-torch | 5 (OPTIONAL) | torch **PASSED** (CPU wheel); mace-torch OPTIONAL/absent here | OPTIONAL ML in `envs/atomistic.yml` pip: (PyTorch CPU index); mace-torch depends on torch | **PASS (torch)** / SKIP (mace) |
+| Quantum ESPRESSO (pw.x) | 5 | `pw.x` is apt-only (`quantum-espresso`) / conda-forge; absent on host. Also needs a Si pseudopotential at runtime | apt `quantum-espresso` in devcontainer/CI; the smoke test runs a tiny Si SCF (set `ESPRESSO_PSEUDO`). Alternative DFT: ABINIT / GPAW | SKIP (host) |
+| LAMMPS (lmp) | 5 | `lmp` is apt-only (`lammps`) / conda-forge; absent on host | apt `lammps` in devcontainer/CI; the smoke test runs a 100-step LJ NVE melt | SKIP (host) |
+| GROMACS (gmx) | 5 | `gmx` is apt-only (`gromacs`) / conda-forge; absent on host | apt `gromacs` in devcontainer/CI; the smoke test reports version + a core-tool self-check | SKIP (host) |
+| ABINIT / CP2K / SIESTA | 5 | apt-only (`abinit`/`cp2k`/`siesta`) / conda-forge; absent on host | apt in devcontainer/CI; alternative DFT engines driven via ASE calculators | SKIP (host) |
+| GPAW | 5 | apt (guarded by availability) / conda-forge; absent on host | conda-forge `gpaw` in the `atomistic` env, or `pip install gpaw` (needs libxc + BLAS); guarded in `scripts/10_apt.sh`. Alternative DFT: QE / ABINIT | SKIP / guarded |
+| OVITO (Python module) | 5 | pip wheel installs, but the native extension needs system OpenGL/Qt (`libGL.so.1`); absent and un-installable (`dnf` read-only) on host | pip `ovito` in the `atomistic` env + apt `libgl1-mesa-dri`/`libglu1-mesa` + Qt in devcontainer/CI; the smoke test loads a LAMMPS dump headless. Fallback: ASE for structure IO | SKIP (host) |
+| DAMASK (python) | 5 | pip `damask` installs, but the full DAMASK grid solver (`damask-grid`) needs PETSc (apt/spack); only the Python package is pip-installable | pip `damask` in the `atomistic` env (pip:); full solver via apt/spack or the DAMASK Docker image in devcontainer/CI | SKIP (solver) |
+| pyxem / kikuchipy / matminer / mp-api / phonopy / py3Dmol | 5 | part of the `atomistic` conda env; not solved on host (no conda) | conda-forge in `envs/atomistic.yml` (devcontainer/CI). `mp-api` also needs an `MP_API_KEY` (network-gated) | SKIP (host) |
+| Neper | 5 | not present in every Ubuntu release; guarded by availability in `scripts/10_apt.sh` | Build Neper from source (github.com/neperfepx/neper; GSL + nlopt + libscotch), or DAMASK grid generation for polycrystals | SKIP / guarded |
+| Fiji / ImageJ | 5 | release archive; headless install needs `unzip` + network; absent on host | `scripts/40_binaries.sh` fetches the Fiji archive and runs `ImageJ-linux64 --headless`; or the `fiji/fiji` Docker image. Python fallback: scikit-image | SKIP (host) |
+| DREAM.3D (PipelineRunner) | 5 | version-specific release archive; network-gated; absent on host | `scripts/40_binaries.sh` best-effort fetch of the BlueQuartzSoftware release, symlinking `PipelineRunner`; or the DREAM.3D Docker image | SKIP (host) |
+| Gwyddion | 5 | apt-only (`gwyddion`); absent on host. The main binary is a GUI; headless via `gwyddion-thumbnailer` / the `gwy` module | apt `gwyddion` in devcontainer/CI (preferred), the Gwyddion Flatpak (`net.gwyddion.Gwyddion`), or scikit-image for SPM/AFM analysis | SKIP (host) |
+
+> `ase_pymatgen`, `orix_polefigure`, and `torch_mace` are the Tier 5 tests that
+> **actually PASSED** on this host via a throwaway `/tmp` venv. BCC Fe resolving
+> to **Im-3m (229)** is the correctness check; the orix run wrote
+> `figures/python/orix_polefigure.png`. Everything requiring apt/conda/system
+> OpenGL/Qt or a release archive is SKIP here and staged for the devcontainer/CI.
+
+> **DFT/MD engines vs the Python stack:** the heavy solvers (QE, LAMMPS,
+> GROMACS, ABINIT, CP2K, SIESTA, GPAW) come from apt (`scripts/10_apt.sh`); the
+> `atomistic` conda env (`envs/atomistic.yml`) provides the scriptable Python
+> layer (ASE drives/analyses the engines; pymatgen/spglib/phonopy for
+> crystallography; orix/pyxem/kikuchipy for microstructure/EBSD; DAMASK/OVITO
+> for microstructure). The OPTIONAL ML stack (scikit-learn / torch CPU /
+> mace-torch) lives in the env's pip: section.
+
+### Proprietary-tool fallback mapping (Tier 5)
+
+| Proprietary tool | Open-source fallback(s) in this workspace |
+| --- | --- |
+| VASP (DFT) | Quantum ESPRESSO, ABINIT, GPAW (also CP2K, SIESTA; driven via ASE) |
+| VESTA (crystal visualization) | py3Dmol, OVITO, ASE (also pymatgen structure plotting) |
+| Materials Studio (atomistic suite) | ASE + pymatgen + matminer + phonopy (crystallography/thermodynamics) |
+| Gatan DigitalMicrograph / OIM (EBSD) | orix, pyxem, kikuchipy (also DREAM.3D for microstructure pipelines) |
+| Simpleware / Avizo (image -> mesh) | Fiji/ImageJ, Gwyddion, DREAM.3D, scikit-image |

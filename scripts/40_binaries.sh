@@ -291,7 +291,115 @@ if ! install_xyce; then
 fi
 
 # ===========================================================================
-# TODO(tier5-heavy): static heavy solver binaries, gated by HEAVY_OK=1
+# TIER 5: headless microscopy / microstructure tools (best-effort CLI only).
+#   Fiji/ImageJ (run with --headless), DREAM.3D (PipelineRunner), and a
+#   Gwyddion headless check. Each is a prebuilt release archive (no source
+#   build), fetched under the 30-min cap. On any failure we do NOT loop - we log
+#   the fallback to docs/UNSUPPORTED.md and move on. We only ever drive these
+#   headlessly (no GUI). Gwyddion itself is preferably installed via apt
+#   (scripts/10_apt.sh); here we only verify/locate its batch entry point.
 # ===========================================================================
 
-log "binaries stage complete (Typst + Quarto CLI + OpenCalphad + Julia/juliaup + Xyce into ${BIN_DIR})."
+# document_unsupported_bin <Tool> <reason-and-fallback lines...>
+document_unsupported_bin() {
+  local tool="$1"; shift
+  local UNSUP="${REPO_ROOT}/docs/UNSUPPORTED.md"
+  log "UNSUPPORTED: ${tool} - ${*}"
+  {
+    echo ""
+    echo "<!-- auto-appended by scripts/40_binaries.sh on $(date -u +%Y-%m-%dT%H:%M:%SZ) -->"
+    echo "- **${tool}**: ${*}"
+  } >> "${UNSUP}"
+}
+
+# --- Fiji / ImageJ (headless CLI) -------------------------------------------
+# Fiji ships as a portable archive with an ImageJ-linux64 launcher that accepts
+# --headless for batch macro runs. We fetch the official Fiji Life-Line archive
+# and extract its launcher into ${BIN_DIR}; the smoke test (if present) runs it
+# with --headless. No GUI is ever started.
+install_fiji() {
+  log "TIER 5: installing Fiji/ImageJ (headless) from the official archive (capped at 30 min)."
+  local tmp zip dir launcher
+  tmp="$(mktemp -d)"
+  zip="${tmp}/fiji.zip"
+  if ! fetch "https://downloads.imagej.net/fiji/latest/fiji-linux64.zip" "${zip}"; then
+    rm -rf "${tmp}"; return 1
+  fi
+  if ! ( cd "${tmp}" && unzip -q "${zip}" ); then
+    log "ERROR: could not unzip Fiji archive (is 'unzip' installed?)."
+    rm -rf "${tmp}"; return 1
+  fi
+  dir="${REPO_ROOT}/.local/Fiji.app"
+  rm -rf "${dir}"
+  mv "${tmp}/Fiji.app" "${dir}" 2>/dev/null || { rm -rf "${tmp}"; return 1; }
+  rm -rf "${tmp}"
+  # The 64-bit headless launcher.
+  launcher="${dir}/ImageJ-linux64"
+  if [ -x "${launcher}" ]; then
+    ln -sf "${launcher}" "${BIN_DIR}/ImageJ-linux64"
+    log "Installed Fiji/ImageJ -> ${BIN_DIR}/ImageJ-linux64 (run with --headless)."
+    return 0
+  fi
+  log "WARN: Fiji launcher ImageJ-linux64 not found after extraction."
+  return 1
+}
+if ! install_fiji; then
+  document_unsupported_bin "Fiji/ImageJ" \
+    "headless archive install failed or exceeded the 30-min cap on this host (needs 'unzip' + network). Fallback: run ImageJ via the official Docker image (fiji/fiji) with --headless, or use scikit-image / pyGwy for Python image analysis. Re-run scripts/40_binaries.sh in the devcontainer/CI."
+fi
+
+# --- DREAM.3D (PipelineRunner, headless) ------------------------------------
+# DREAM.3D / DREAM3D-NX ships as a prebuilt Linux archive containing the
+# headless PipelineRunner CLI. We fetch the archive and symlink PipelineRunner
+# into ${BIN_DIR}. The exact release URL changes per version, so this is
+# best-effort via the GitHub releases 'latest' asset; on failure we document
+# the fallback and move on.
+install_dream3d() {
+  log "TIER 5: installing DREAM.3D PipelineRunner (headless) - best-effort (capped at 30 min)."
+  local tmp tarball dir runner
+  tmp="$(mktemp -d)"
+  tarball="${tmp}/dream3d.tar.gz"
+  # BlueQuartzSoftware publishes Linux archives on GitHub releases.
+  if ! fetch "https://github.com/BlueQuartzSoftware/DREAM3D/releases/latest/download/DREAM3D-latest-Linux-x86_64.tar.gz" "${tarball}"; then
+    rm -rf "${tmp}"; return 1
+  fi
+  if ! ( cd "${tmp}" && tar -xzf "${tarball}" ); then
+    rm -rf "${tmp}"; return 1
+  fi
+  dir="${REPO_ROOT}/.local/dream3d"
+  rm -rf "${dir}"; mkdir -p "${dir}"
+  # Flatten the single top-level extracted directory into ${dir}.
+  cp -a "${tmp}"/*/. "${dir}/" 2>/dev/null || cp -a "${tmp}"/. "${dir}/"
+  rm -rf "${tmp}"
+  runner="$(ls "${dir}"/bin/PipelineRunner "${dir}"/PipelineRunner 2>/dev/null | head -n1 || true)"
+  if [ -n "${runner}" ] && [ -x "${runner}" ]; then
+    ln -sf "${runner}" "${BIN_DIR}/PipelineRunner"
+    log "Installed DREAM.3D PipelineRunner -> ${BIN_DIR}/PipelineRunner."
+    return 0
+  fi
+  log "WARN: DREAM.3D PipelineRunner not found after extraction."
+  return 1
+}
+if ! install_dream3d; then
+  document_unsupported_bin "DREAM.3D (PipelineRunner)" \
+    "prebuilt-archive install failed or exceeded the 30-min cap on this host (release asset URL is version-specific / network-gated). Fallback: download the matching DREAM3D-NX Linux archive from github.com/BlueQuartzSoftware/DREAM3D releases and put its bin/PipelineRunner on PATH, or run the DREAM.3D Docker image. Re-run scripts/40_binaries.sh in the devcontainer/CI."
+fi
+
+# --- Gwyddion (headless batch) ----------------------------------------------
+# Gwyddion is preferably installed via apt (scripts/10_apt.sh). Here we only
+# locate its non-interactive entry point: `gwyddion-thumbnailer` / the Python
+# `gwy` module cover headless SPM data processing (the main `gwyddion` binary is
+# a GUI). If neither apt nor the tools are present, document the fallback.
+if command -v gwyddion-thumbnailer >/dev/null 2>&1 || command -v gwyddion >/dev/null 2>&1; then
+  log "Gwyddion present (apt). Headless batch via gwyddion-thumbnailer / the 'gwy' Python module."
+else
+  document_unsupported_bin "Gwyddion (headless)" \
+    "not installed (apt gwyddion absent on this host). Fallback: apt 'gwyddion' in the devcontainer/CI (preferred), the Gwyddion Flatpak (net.gwyddion.Gwyddion), or scikit-image for Python SPM/AFM image analysis."
+fi
+
+# ===========================================================================
+# TODO(tier5-heavy): static heavy solver binaries, gated by HEAVY_OK=1
+#   (none required: the Tier 5 DFT/MD engines come from apt in 10_apt.sh.)
+# ===========================================================================
+
+log "binaries stage complete (Typst + Quarto + OpenCalphad + Julia + Xyce + Fiji/DREAM.3D/Gwyddion into ${BIN_DIR})."

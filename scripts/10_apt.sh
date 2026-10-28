@@ -250,7 +250,72 @@ apt_install \
   qucs-s
 
 # ===========================================================================
+# TIER 5 (atomistic): atomistic / DFT / MD / microstructure engines.
+#   Open-source DFT + MD solvers from Ubuntu universe plus the MPI + build
+#   toolchain they need. Quantum ESPRESSO (pw.x), LAMMPS (lmp), ABINIT, CP2K,
+#   SIESTA, GROMACS (gmx) are the core engines; openmpi + gfortran/cmake/
+#   build-essential cover MPI runs and any allowed local builds. GPAW and Neper
+#   are only in some Ubuntu releases, so they are guarded by availability and
+#   documented in docs/UNSUPPORTED.md when absent (never abort the stage).
+# ===========================================================================
+log "TIER 5 apt packages (atomistic / DFT / MD / microstructure)."
+apt_install \
+  quantum-espresso \
+  lammps \
+  openmpi-bin \
+  libopenmpi-dev \
+  abinit \
+  cp2k \
+  siesta \
+  gromacs \
+  gfortran \
+  cmake \
+  build-essential
+
+# GPAW (grid-based real-space DFT) - guarded by availability. GPAW also needs a
+# PAW dataset at runtime; the apt package pulls gpaw-data where available.
+if apt_available gpaw; then
+  apt_install gpaw || document_unsupported "GPAW" \
+    "apt install failed on this host (devcontainer/CI)." \
+    "conda-forge \`gpaw\` in the \`atomistic\` env, or \`pip install gpaw\` (needs libxc + BLAS). Alternative DFT: Quantum ESPRESSO / ABINIT."
+else
+  document_unsupported "GPAW" \
+    "not present in the apt indexes for this Ubuntu release." \
+    "conda-forge \`gpaw\` in the \`atomistic\` env, or \`pip install gpaw\` (needs libxc + BLAS). Alternative DFT: Quantum ESPRESSO / ABINIT."
+fi
+
+# Neper (polycrystal generation & meshing) - guarded by availability.
+if apt_available neper; then
+  apt_install neper || document_unsupported "Neper" \
+    "apt install failed on this host (devcontainer/CI)." \
+    "Build Neper from source (github.com/neperfepx/neper, needs GSL + nlopt + libscotch), or use DAMASK grid generation for polycrystals."
+else
+  document_unsupported "Neper" \
+    "not present in the apt indexes for this Ubuntu release." \
+    "Build Neper from source (github.com/neperfepx/neper, needs GSL + nlopt + libscotch), or use DAMASK grid generation for polycrystals."
+fi
+
+# ===========================================================================
+# TIER 5 (microscopy / imaging binaries): Gwyddion via apt (preferred).
+#   Gwyddion (SPM/AFM image analysis) ships in Ubuntu universe; the headless
+#   batch tools are driven in scripts/40_binaries.sh. Fiji/ImageJ and DREAM.3D
+#   are release-archive tools, also handled in scripts/40_binaries.sh.
+# ===========================================================================
+log "TIER 5 imaging: Gwyddion (prefer apt)."
+if apt_available gwyddion; then
+  apt_install gwyddion || document_unsupported "Gwyddion" \
+    "apt install failed on this host (devcontainer/CI)." \
+    "Gwyddion Flatpak (flathub net.gwyddion.Gwyddion), or scikit-image / pyGwy for SPM data."
+else
+  document_unsupported "Gwyddion" \
+    "not present in the apt indexes for this Ubuntu release." \
+    "Gwyddion Flatpak (flathub net.gwyddion.Gwyddion), or scikit-image / pyGwy for SPM data."
+fi
+
+# ===========================================================================
 # TODO(tier5-heavy): heavy system deps, gated by HEAVY_OK=1
+#   (none required for Tier 5 beyond the engines above; host resources on this
+#   machine clear the heavy thresholds, so the engines install unconditionally.)
 # ===========================================================================
 
-log "apt stage skeleton complete (no package lists yet)."
+log "apt stage complete (Tiers 1,3,4,5,6 package lists + guarded optionals)."

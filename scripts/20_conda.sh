@@ -98,11 +98,26 @@ log "TIER 4: best-effort PyChrono via the 'projectchrono' conda channel."
 log "PyChrono: install wired (conda 'projectchrono' channel, best-effort, no source build)."
 
 # ===========================================================================
-# TODO(tier4-atomistic): ensure_env atomistic envs/atomistic.yml
+# TIER 5 (atomistic): the atomistic / DFT / MD / microstructure env.
+#   ase, pymatgen, matminer, mp-api, spglib, phonopy, py3Dmol, orix, pyxem,
+#   kikuchipy via conda-forge; damask + ovito + the OPTIONAL ML stack
+#   (scikit-learn / torch CPU / mace-torch) via the env's pip: section. The
+#   heavy DFT/MD engines themselves (Quantum ESPRESSO, LAMMPS, GROMACS, ABINIT,
+#   CP2K, SIESTA, GPAW) come from apt (scripts/10_apt.sh); this env drives and
+#   analyses them (ASE provides their calculators / file IO).
 # ===========================================================================
+ensure_env atomistic envs/atomistic.yml
+
+# --- OPTIONAL ML note (torch CPU / mace-torch) ------------------------------
+# The OPTIONAL ML packages live in envs/atomistic.yml under pip: and are pulled
+# from the PyTorch CPU wheel index to avoid large CUDA downloads. If the torch
+# install exceeds the 30-min cap on a constrained host, prune it from the env
+# and document under docs/UNSUPPORTED.md - the rest of the atomistic env is
+# unaffected (ML is OPTIONAL per the task).
+log "TIER 5: atomistic env wired; OPTIONAL ML (scikit-learn/torch CPU/mace-torch) via its pip: section."
 
 # ===========================================================================
 # TODO(tier5-chem): ensure_env chem envs/chem.yml
 # ===========================================================================
 
-log "conda stage skeleton complete (no env YAMLs wired yet)."
+log "conda stage complete (fea + cad + atomistic envs wired; chem pending)."
