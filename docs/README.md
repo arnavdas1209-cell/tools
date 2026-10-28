@@ -4,12 +4,19 @@ A fully reproducible, **headless** (no GUI, no GPU), open-source engineering and
 materials-science workspace: Ubuntu 24.04 devcontainer, per-domain conda-forge
 environments, numbered install scripts, honest smoke tests, and GitHub Actions CI.
 
-> Status: scaffolding (FEAT-001). Tier tooling, env YAMLs, and smoke tests are
-> added by later features.
+## Purpose
+
+Give engineers and materials scientists a single reproducible workspace that
+replaces common proprietary tools (Ansys/Abaqus/COMSOL, Fluent, SolidWorks,
+ChemDraw, MATLAB/Simulink, Origin, Thermo-Calc, VASP, VESTA, LTspice, ...) with
+open-source equivalents that run **headless** in a container or CI, with every
+tool backed by a smoke test. The full proprietary -> open-source fallback map is
+in [`docs/UNSUPPORTED.md`](UNSUPPORTED.md).
 
 ## Quick start
 
-Inside the devcontainer (or any Ubuntu 24.04 host):
+The two commands you need are **`make setup`** and **`make verify`**. Run them
+inside the devcontainer (or any Ubuntu 24.04 host):
 
 ```bash
 make setup    # detect environment, then run install stages 10..50 in order
@@ -17,6 +24,33 @@ make verify   # run every smoke test -> docs/VERIFY_REPORT.md
 make report   # print docs/ENV_REPORT.md and docs/VERIFY_REPORT.md
 make clean    # remove build artifacts (keeps source)
 ```
+
+## Prerequisites
+
+- **Ubuntu 24.04** (the devcontainer base). The install stages use `apt`,
+  conda-forge, `npm`, and GitHub release binaries.
+- **conda / mamba** (miniforge) for the per-domain environments in `envs/`.
+- **Node.js + npm** for mermaid-cli, draw.io and the self-hosted Ketcher build.
+- Optionally a working **Apptainer** (preferred) or **Docker** runtime for the
+  container-image tools (Code_Aster, OpenFOAM fallback).
+- `make`, `bash`, `git`, and Python 3.11.
+
+Everything is authored to run **inside the devcontainer/CI**; no host build
+system is required. On other hosts the install stages detect missing tooling and
+skip gracefully (see the honesty rule below).
+
+## Open in a devcontainer / GitHub Codespaces
+
+This repo ships a `.devcontainer/` (Ubuntu 24.04 `Dockerfile` +
+`devcontainer.json`). Two ways to open it:
+
+- **VS Code + Dev Containers:** open the folder and run
+  *"Dev Containers: Reopen in Container"*. The container builds from
+  `.devcontainer/Dockerfile`.
+- **GitHub Codespaces:** click **Code -> Codespaces -> Create codespace**. The
+  same devcontainer definition is used.
+
+Once the container is up, run `make setup` then `make verify`.
 
 ## Layout
 
@@ -71,6 +105,12 @@ Any static server works equally well, e.g. `python3 -m http.server 8080 -d .loca
 If the build fails or exceeds the 30-min cap it is recorded in
 [`docs/UNSUPPORTED.md`](UNSUPPORTED.md) with the RDKit/Indigo fallback.
 
+## Obsidian vault & plugins
+
+Lab notes live in `notes/obsidian-vault/`. The recommended community plugins
+(and how to enable them for a scientific workflow) are documented in
+[`notes/obsidian-vault/PLUGINS.md`](../notes/obsidian-vault/PLUGINS.md).
+
 ## FEA / multiphysics / mesh / CFD (Tier 3)
 
 The `fea` conda env (`envs/fea.yml`) provides FEniCSx (dolfinx), FiPy,
@@ -82,19 +122,25 @@ via `pip` in that env's `pip:` section. System solvers (`calculix-ccx`, `gmsh`,
 ### Offscreen rendering (PyVista / ParaView)
 
 On a headless host there is no X server, so PyVista/ParaView render through
-software/EGL OpenGL. `scripts/10_apt.sh` installs `libosmesa6` (OSMesa), the
-Mesa DRI/EGL libraries, and exports:
+software (**OSMesa**) or **EGL** OpenGL. `scripts/10_apt.sh` installs
+`libosmesa6` (OSMesa) plus the Mesa DRI/EGL/GLX libraries and exports the
+offscreen environment variables:
 
 ```bash
-export PYVISTA_OFF_SCREEN=true
+export PYVISTA_OFF_SCREEN=true   # PyVista never opens a window
+export PYOPENGL_PLATFORM=osmesa  # or 'egl' on EGL-capable hosts
+export MPLCONFIGDIR=/tmp/mpl     # writable matplotlib cache (read-only $HOME)
 ```
 
-Set this in your shell (CI and the devcontainer already export it) so PyVista
-never tries to open a window:
+Set these in your shell (CI and the devcontainer already export them) so PyVista
+renders headless:
 
 ```bash
 PYVISTA_OFF_SCREEN=true python my_pyvista_script.py
 ```
+
+OSMesa is the software rasteriser (no GPU needed); EGL is the GPU/accelerated
+offscreen path. Either works for the headless smoke tests.
 
 ### OpenFOAM: apt repo (primary) with Docker fallback
 
@@ -154,11 +200,72 @@ already loaded by `templates/block-notes.tex` and exercised by
 (`kicad-cli` version + minimal schematic SVG export), `schemdraw_rc.py` (RC
 circuit to PNG).
 
-## Honesty rule
+## Honesty rule & how to read `VERIFY_REPORT.md`
 
 A tool is never marked **PASS** until its smoke test actually passes. Anything
 that cannot install in a headless Linux container is recorded in
 [`docs/UNSUPPORTED.md`](UNSUPPORTED.md) with the reason and a fallback.
+
+`make verify` writes [`docs/VERIFY_REPORT.md`](VERIFY_REPORT.md): a markdown
+table with columns **tool | tier | version | PASS/FAIL/SKIP | seconds | note**,
+rows sorted by tier. Read it as follows:
+
+- **PASS** - the smoke test exited `0`: the tool is installed and its tiny real
+  computation (or render) succeeded. The `version` and `note` columns show what
+  actually ran.
+- **SKIP** - the smoke test exited `2`: the tool is absent / not applicable in
+  this environment. The `note` explains why and points to where it runs for
+  real; every SKIP has a matching reason + fallback in
+  [`docs/UNSUPPORTED.md`](UNSUPPORTED.md).
+- **FAIL** - any other nonzero exit (including a 120s timeout): the tool was
+  present but its check failed. The report never fabricates a PASS.
+
+The committed report reflects the **last real run on the validation host**
+(Amazon Linux 2023: no apt, no conda, no working container runtime). On that
+host only the pip-installable, pure-Python tests execute; everything that needs
+apt/conda/npm/a container is honestly **SKIP** and is staged to run in the
+Ubuntu 24.04 devcontainer / GitHub Actions CI.
+
+## Final summary: what installed vs what was skipped (and why)
+
+The current host run is **10 PASS / 0 FAIL / 28 SKIP (38 tests)**. The table
+below summarises each tool, distinguishing **host-executed** (ran for real here)
+from **devcontainer/CI-staged** (SKIP here, runs for real in the container).
+
+### Host-executed (PASS on this host via pip)
+
+| Tool / test | Tier | What ran |
+| --- | --- | --- |
+| core-python (numpy/scipy/sympy/matplotlib/schemdraw) | 1 | integral/det/plot + schemdraw SVG |
+| rdkit_indigo | 2 | RDKit + Indigo molecule render |
+| pycalphad_phase | 2 | Al-Zn phase diagram |
+| cantera_thermo | 2 | O2 Gibbs energy at 1000 K |
+| meshio_convert | 3 | VTU <-> MSH round-trip |
+| fenics_poisson (scikit-fem fallback) | 3 | Poisson solve, error < tol |
+| ase_pymatgen | 5 | BCC Fe -> space group Im-3m (229) |
+| orix_polefigure | 5 | (001) pole figure PNG |
+| torch_mace (torch CPU) | 5 | CPU tensor op (mace-torch optional) |
+| schemdraw_rc | 6 | RC circuit PNG |
+
+### Devcontainer/CI-staged (SKIP here; runs for real in the container/CI)
+
+| Tools | Tier | Why skipped on host | Where / how they run |
+| --- | --- | --- | --- |
+| latex, mermaid, graphviz, inkscape, drawio, octave, scilab, gnuplot, grace, openscad, veusz | 1 | no apt/npm on host | apt + `scripts/30_node.sh` in devcontainer/CI |
+| openbabel | 2 | conda-forge only | `chem` env |
+| calculix, elmer, freefem, su2, openfoam | 3 | apt/conda/container only | apt / conda / openfoam.org repo + Docker fallback |
+| code_aster | 3 | no working container runtime | Apptainer/Docker image; `scripts/run_aster.sh` |
+| Salome | 3 | skipped by design (GUI/CAE bundle) | Gmsh + meshio + ParaView + FreeCAD |
+| freecad_step, cadquery_stl, openmodelica, julia | 4 | apt / system OpenGL / release binary | apt + `envs/cad.yml` + `scripts/40_binaries.sh` |
+| CAMotics, MBDyn | 4 | apt availability-guarded | AppImage / PyChrono |
+| quantum_espresso, lammps, gromacs, ovito_load | 5 | apt/conda / system OpenGL-Qt | apt + `envs/atomistic.yml` |
+| GPAW, Neper | 5 | apt availability-guarded / conda-forge | conda-forge / source build |
+| ngspice, kicad | 6 | apt only | apt in devcontainer/CI |
+| Xyce | 6 | no wheel / apt pkg | conda-forge, else ngspice |
+
+Full reasons and the proprietary -> open-source fallback map are in
+[`docs/UNSUPPORTED.md`](UNSUPPORTED.md); live results are in
+[`docs/VERIFY_REPORT.md`](VERIFY_REPORT.md).
 
 ## Environment detection
 

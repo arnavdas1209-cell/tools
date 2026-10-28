@@ -118,12 +118,15 @@ done
   echo
   echo "Totals: ${n_pass} passed, ${n_fail} failed, ${n_skip} skipped (${n_total} tests)."
   echo
-  echo "| tool | tier | version | result | seconds | note |"
+  echo "| tool | tier | version | PASS/FAIL/SKIP | seconds | note |"
   echo "| --- | --- | --- | --- | --- | --- |"
   if [ "${n_total}" -eq 0 ]; then
     echo "| _(no smoke tests discovered yet)_ |  |  |  |  | add tests under tests/smoke/ |"
   else
-    sort "${rows_file}"
+    # Sort rows by tier (numeric, column 3 after the leading '| '), then by tool
+    # name (column 2). The leading pipe makes awk field 1 empty, so tool=$2 and
+    # tier=$3 with FS=' | '. A missing tier ('?') sorts last via a large key.
+    sort -t'|' -k3,3n -k2,2 "${rows_file}"
   fi
 } > "${REPORT}"
 

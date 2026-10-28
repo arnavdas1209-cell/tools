@@ -5,6 +5,43 @@ headless Linux container is recorded here with the **reason** and a **fallback**
 Do not loop on failures: try one alternative (conda-forge -> pip -> Docker/Apptainer
 image), then document it here and move on.
 
+## Proprietary -> open-source fallback mapping (complete)
+
+This is the canonical mapping of proprietary engineering / materials-science
+tools to the open-source replacements provided (or staged) in this workspace.
+Per-tier reasons and host-vs-devcontainer status are in the tables further down.
+
+| Proprietary tool | Open-source fallback(s) |
+| --- | --- |
+| Ansys / Abaqus / COMSOL | CalculiX, Code_Aster, Elmer, FEniCSx |
+| Ansys Fluent | OpenFOAM, SU2 |
+| SolidWorks / Fusion | FreeCAD, CadQuery |
+| ChemDraw | RDKit, Indigo, Ketcher |
+| MATLAB / Simulink | Octave, Scilab/Xcos, Julia, OpenModelica |
+| Origin | matplotlib, Veusz, gnuplot |
+| Thermo-Calc / FactSage | pycalphad, ESPEI, OpenCalphad |
+| VASP | Quantum ESPRESSO, ABINIT, GPAW |
+| VESTA | py3Dmol, OVITO, ASE |
+| LTspice | ngspice, Xyce |
+
+### Environment-specific skips (recorded during the tiers)
+
+These are tools skipped on **this validation host** for environment reasons, with
+the reason and the open-source fallback / where they run for real. Each has a
+matching detailed row in the per-tier tables below.
+
+| Tool | Tier | Reason skipped (host) | Fallback / where it runs |
+| --- | --- | --- | --- |
+| Salome | 3 | Skipped by design; heavy GUI/CAE bundle, no clean headless apt/conda install | Gmsh + meshio + ParaView (post) + FreeCAD (CAD) |
+| Code_Aster | 3 | No working container runtime on host (podman/conmon broken, apptainer absent -> `CONTAINER_RUNTIME=none`) | Official image via Apptainer/Docker in devcontainer/CI; `scripts/run_aster.sh` exits 2 (SKIP) cleanly |
+| CAMotics | 4 | Not in every Ubuntu apt index; guarded by availability | CAMotics AppImage, or CadQuery/build123d for CAM scripting |
+| MBDyn | 4 | Not in every Ubuntu apt index; guarded by availability | PyChrono (conda `projectchrono`), or MBDyn source build |
+| Neper | 5 | Not in every Ubuntu apt index; guarded by availability | Neper source build (GSL + nlopt + libscotch), or DAMASK grid generation |
+| GPAW | 5 | apt availability-guarded / conda-forge only; absent on host | conda-forge `gpaw` in `atomistic` env, or pip `gpaw`; alt DFT: QE / ABINIT |
+| Xyce | 6 | No PyPI wheel and no official apt package; conda-forge only (no conda on host) | conda-forge `xyce`, else Xyce binary installer, else ngspice |
+| CadQuery | 4 | OCP (OpenCascade) native import needs system OpenGL (`libGL.so.1`); `dnf` read-only on host | apt `libgl1-mesa-dri`/`libglu1-mesa` in devcontainer/CI; then exports STL for real |
+| OVITO | 5 | Native extension needs system OpenGL/Qt (`libGL.so.1`); `dnf` read-only on host | apt `libgl1-mesa-dri`/`libglu1-mesa` + Qt in devcontainer/CI; fallback ASE for structure IO |
+
 ## Tier 1 (notes + diagrams + plotting)
 
 On the authoring/validation host (Amazon Linux 2023: no apt, no conda, no npm),
@@ -79,7 +116,7 @@ honesty rule.
 | FreeFEM (FreeFem++) | 3 | apt-only (`freefem++`); absent on host | apt `freefem++` in devcontainer/CI | SKIP (host) |
 | OpenFOAM | 3 | No apt on host; openfoam.org repo + Docker both unavailable here | **Primary:** openfoam.org apt repo (`openfoam` pkg) in `scripts/10_apt.sh`. **Fallback:** `opencfd/openfoam-default` Docker image in `scripts/50_docker_images.sh` (gated on `HAS_DOCKER`) | SKIP (host) |
 | SU2 (SU2_CFD) | 3 | conda-forge `su2` in `fea` env; absent on host | conda-forge `su2` in `fea` env, else SU2 release binaries / Docker image | SKIP (host) |
-| Code_Aster | 3 | Ships as a container; host has **no working container runtime** (podman shim broken, apptainer absent -> `CONTAINER_RUNTIME=none`) | Official Code_Aster image via **Apptainer (preferred) or Docker**, pulled in `scripts/50_docker_images.sh`; run headless with `scripts/run_aster.sh <case.comm|.export>`. `run_aster.sh` exits 2 (SKIP) cleanly when no runtime exists | SKIP (host) |
+| Code_Aster | 3 | Ships as a container; host has **no working container runtime** (podman shim broken, apptainer absent -> `CONTAINER_RUNTIME=none`) | Official Code_Aster image via **Apptainer (preferred) or Docker**, pulled in `scripts/50_docker_images.sh`; run headless with `scripts/run_aster.sh <case.comm \| .export>`. `run_aster.sh` exits 2 (SKIP) cleanly when no runtime exists | SKIP (host) |
 | MOOSE / PRISMS-PF | 3 | OPTIONAL, heavy; conda-only `moose-dev`. Gated on `HEAVY_OK` (RAM>=16GB && disk>=40GB). No conda on host | conda `moose-dev` (channel `conda.software.inl.gov/public`) in `scripts/20_conda.sh`; **never source-compiled**. PRISMS-PF via deal.II (apt `libdeal.ii-dev`). Fallback: FEniCSx / MFEM | SKIP (host) |
 | Salome (SALOME platform) | 3 | **Skipped by design.** Heavy GUI/CAD-CAE integration platform; no clean headless apt/conda install, and the official distribution is a large GUI bundle | **Fallback:** Gmsh (meshing) + meshio (mesh I/O) + ParaView/`paraview-python` (post) cover the headless mesh+visualize workflow; FreeCAD (Tier 4 CAD env) for CAD. Use the SALOME Docker image only if a GUI session is explicitly needed | SKIP (by design) |
 
