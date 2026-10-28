@@ -33,6 +33,28 @@ make clean    # remove build artifacts (keeps source)
 | `docs/` | README, UNSUPPORTED, generated ENV_REPORT & VERIFY_REPORT |
 | `.github/workflows/` | CI: tiers 1-3 on push, tiers 4-5 nightly |
 
+## Headless diagram export
+
+Several diagram tools are GUI apps driven from the CLI. On a headless host they
+run under a virtual framebuffer (`xvfb`) or a `--no-sandbox` browser.
+
+- **Mermaid** (`@mermaid-js/mermaid-cli`): `30_node.sh` writes
+  `scripts/puppeteer-config.json` pointing puppeteer at the system Chromium with
+  `--no-sandbox`. Render with:
+
+  ```bash
+  mmdc -p scripts/puppeteer-config.json -i diagram.mmd -o diagram.svg
+  ```
+
+- **draw.io** (`drawio-desktop`): the Electron CLI exporter must run under
+  `xvfb-run` on a headless host. Export a diagram to PDF/SVG with:
+
+  ```bash
+  xvfb-run -a drawio --no-sandbox -x -f pdf -o out.pdf input.drawio
+  ```
+
+- **Inkscape**: `inkscape in.svg --export-type=pdf --export-filename=out.pdf`.
+
 ## Honesty rule
 
 A tool is never marked **PASS** until its smoke test actually passes. Anything

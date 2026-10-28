@@ -1,0 +1,137 @@
+% notes/latex/demo.tex
+% Tier 1 LaTeX demo: exercises every block environment from the block-notes
+% template exactly once, plus a pgfplots Ellingham chart, a TikZ free-body
+% diagram, a CircuiTikZ circuit, an mhchem reaction, and a minted Python block.
+%
+% Build (needs -shell-escape for minted + biber for the bibliography):
+%   latexmk -pdf -shell-escape demo.tex
+% from notes/latex/, or from the repo root:
+%   latexmk -pdf -shell-escape -cd notes/latex/demo.tex
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=25mm]{geometry}
+\usepackage{graphicx}
+
+% Load the shared block-notes template (packages + tcolorbox environments).
+% Path is relative to this file; latexmk runs with -cd so this resolves.
+\input{../../templates/block-notes.tex}
+
+% Bibliography database (biblatex/biber).
+\addbibresource{../../refs/library.bib}
+
+\title{Tier 1 Demo: Notes, Diagrams, and Plotting}
+\author{Scientific-Computing Workspace}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+% --- 1. theorybox ----------------------------------------------------------
+\begin{theorybox}
+The Gibbs free energy of a reaction, \(\Delta G = \Delta H - T\,\Delta S\),
+governs oxide stability. An Ellingham diagram plots \(\Delta G\) versus
+temperature \(T\) for metal oxidation, as discussed by \textcite{ellingham1944}.
+\end{theorybox}
+
+% --- 2. derivationbox ------------------------------------------------------
+\begin{derivationbox}
+For carbothermic reduction the relevant lines cross where carbon monoxide
+formation becomes favorable:
+\begin{align}
+  \Delta G_{\text{ox}} &= \Delta H_{\text{ox}} - T\,\Delta S_{\text{ox}}, \\
+  \Delta G_{\ce{CO}}   &= \Delta H_{\ce{CO}} - T\,\Delta S_{\ce{CO}}, \\
+  T_{\text{eq}}        &= \frac{\Delta H_{\text{ox}} - \Delta H_{\ce{CO}}}
+                              {\Delta S_{\text{ox}} - \Delta S_{\ce{CO}}} .
+\end{align}
+The overall reduction of hematite by carbon monoxide is
+\ce{Fe2O3 + 3CO -> 2Fe + 3CO2}.
+\end{derivationbox}
+
+% --- 3. diagrambox: Ellingham pgfplots + TikZ FBD + CircuiTikZ -------------
+\begin{diagrambox}
+Ellingham-style plot of \(\Delta G\) against temperature (schematic):
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[
+    width=0.8\linewidth, height=5cm,
+    xlabel={Temperature \(T\) (\si{\kelvin})},
+    ylabel={\(\Delta G\) (\si{\kilo\joule\per\mole})},
+    legend pos=south west, grid=both, domain=300:1800, samples=2,
+  ]
+  \addplot[blue, thick]  {-560 + 0.17*x};  \addlegendentry{\ce{2Fe + 3/2 O2 -> Fe2O3}}
+  \addplot[red,  thick]  {-230 - 0.17*x};  \addlegendentry{\ce{2CO -> 2C + O2}}
+\end{axis}
+\end{tikzpicture}
+\end{center}
+
+Free-body diagram (TikZ) of a block on an incline:
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, scale=1.1]
+  \draw[thick] (0,0) -- (4,0);
+  \filldraw[fill=gray!20] (1.6,0.05) rectangle (2.4,0.75);
+  \coordinate (c) at (2.0,0.4);
+  \draw[->, thick, blue]  (c) -- ++(0,1.2)  node[above] {\(N\)};
+  \draw[->, thick, red]   (c) -- ++(0,-1.2) node[below] {\(mg\)};
+  \draw[->, thick, teal]  (c) -- ++(1.2,0)  node[right] {\(F\)};
+  \draw[->, thick, orange](c) -- ++(-1.0,0) node[left]  {\(f\)};
+\end{tikzpicture}
+\end{center}
+
+A simple RC circuit (CircuiTikZ):
+
+\begin{center}
+\begin{circuitikz}[scale=1.0]
+  \draw (0,0) to[V, l=\(V_s\)] (0,2)
+        to[R, l=\(R\)] (2,2)
+        to[C, l=\(C\)] (2,0) -- (0,0);
+\end{circuitikz}
+\end{center}
+\end{diagrambox}
+
+% --- 4. codebox: minted Python ---------------------------------------------
+\begin{codebox}
+\begin{minted}{python}
+import numpy as np
+
+def delta_g(T, dH, dS):
+    """Gibbs free energy line: dG = dH - T*dS (kJ/mol)."""
+    return dH - T * dS
+
+T = np.linspace(300, 1800, 16)
+print(delta_g(T, dH=-560.0, dS=0.17))
+\end{minted}
+\end{codebox}
+
+% --- 5. examplebox ---------------------------------------------------------
+\begin{examplebox}
+At \(T = \SI{1200}{\kelvin}\), using \(\Delta H = \SI{-560}{\kilo\joule\per\mole}\)
+and \(\Delta S = \SI{0.17}{\kilo\joule\per\mole\per\kelvin}\):
+\(\Delta G = -560 - 1200 \times 0.17 = \SI{-356}{\kilo\joule\per\mole}\).
+\end{examplebox}
+
+% --- 6. warningbox ---------------------------------------------------------
+\begin{warningbox}
+Ellingham lines assume all species are at unit activity and ignore kinetics;
+a thermodynamically favorable reduction may still be kinetically slow.
+\end{warningbox}
+
+% --- 7. datatable ----------------------------------------------------------
+\begin{datatable}
+\begin{tabular}{lrr}
+\hline
+Species & \(\Delta H\) (\si{\kilo\joule\per\mole}) & \(\Delta S\) (\si{\joule\per\mole\per\kelvin}) \\
+\hline
+\ce{Fe2O3} & \num{-824} & \num{87}  \\
+\ce{CO}    & \num{-111} & \num{198} \\
+\ce{CO2}   & \num{-394} & \num{214} \\
+\hline
+\end{tabular}
+\end{datatable}
+
+\printbibliography
+
+\end{document}

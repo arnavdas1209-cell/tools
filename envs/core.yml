@@ -1,0 +1,38 @@
+# envs/core.yml - Tier 1 "core" conda environment (notes + diagrams + plotting).
+#
+# Create/update with:
+#   mamba env create -f envs/core.yml      # or: conda env create -f envs/core.yml
+#   mamba env update -f envs/core.yml --prune
+#
+# Pin versions with `conda env export --from-history` (or conda-lock) after a
+# successful solve. Never use sudo inside this env.
+name: core
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  # numeric / scientific core
+  - numpy
+  - scipy
+  - sympy
+  - pandas
+  # plotting / visualization
+  - matplotlib
+  - seaborn
+  - plotly
+  # notebooks / conversion
+  - jupyterlab
+  - jupytext
+  - nbconvert
+  # engineering notes / schematics
+  - schemdraw
+  - lcapy
+  # graph tooling (CLI + python bindings)
+  - graphviz
+  - pygraphviz
+  # image / computer vision
+  - scikit-image
+  - opencv
+  # NOTE: scipy-stats-extras is intentionally OMITTED - no such package exists on
+  # conda-forge (the spec says "if exists, else skip"). scipy.stats already
+  # provides the extended statistics API, so no fallback package is required.

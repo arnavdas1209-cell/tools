@@ -47,17 +47,58 @@ log "Starting apt stage. HEAVY_OK=${HEAVY_OK:-0}"
 # Keep noninteractive so CI never blocks on prompts.
 export DEBIAN_FRONTEND=noninteractive
 
-# --- refresh indexes (real work added by later features) --------------------
-# cap ${SUDO} apt-get update
+# --- refresh indexes --------------------------------------------------------
+cap ${SUDO} apt-get update
+
+# --- apt install helper (noninteractive, capped) ----------------------------
+# Usage: apt_install <pkg> [pkg...]
+apt_install() {
+  log "apt-get install: $*"
+  cap ${SUDO} apt-get install -y --no-install-recommends "$@"
+}
 
 # ===========================================================================
-# TODO(tier1-core): base apt deps - build-essential, git, curl, ca-certificates,
-#   xvfb, libgl1, libosmesa6, fonts, etc. (added in the core tier feature)
+# TIER 1 (core): notes + diagrams + plotting.
+#   LaTeX stack (latex-extra/science/pictures/publishers/bibtex-extra + tools),
+#   pandoc/imagemagick/ghostscript/librsvg, graph & plotting tools, vector/CAD
+#   editors, numeric shells (octave/scilab), and the headless browser stack
+#   (chromium + xvfb) used by mermaid-cli and drawio-desktop CLI export.
 # ===========================================================================
+log "TIER 1 apt packages (notes + diagrams + plotting)."
+apt_install \
+  texlive-latex-extra \
+  texlive-science \
+  texlive-pictures \
+  texlive-publishers \
+  texlive-bibtex-extra \
+  latexmk \
+  biber \
+  chktex \
+  pandoc \
+  imagemagick \
+  ghostscript \
+  librsvg2-bin \
+  graphviz \
+  gnuplot \
+  grace \
+  veusz \
+  inkscape \
+  openscad \
+  octave \
+  scilab \
+  chromium \
+  xvfb
 
-# ===========================================================================
-# TODO(tier2-latex): texlive base + latexmk (texlive-fonts-extra only if HEAVY_OK=1)
-# ===========================================================================
+# texlive-fonts-extra is large (~1 GB+); gate it behind HEAVY_OK for portability
+# on resource-constrained hosts. When skipped, note it in ENV_REPORT.md.
+if [ "${HEAVY_OK:-0}" = "1" ]; then
+  log "HEAVY_OK=1: installing texlive-fonts-extra."
+  apt_install texlive-fonts-extra
+else
+  log "SKIP texlive-fonts-extra (HEAVY_OK!=1): low RAM/disk; see docs/ENV_REPORT.md."
+  printf '\n- SKIPPED `texlive-fonts-extra` in 10_apt.sh because HEAVY_OK!=1 (RAM<16GB or disk<40GB). Fallback: core texlive fonts remain available; install manually if fonts are missing.\n' \
+    >> "${REPO_ROOT}/docs/ENV_REPORT.md" || true
+fi
 
 # ===========================================================================
 # TODO(tier3-fea): FEA system deps (OpenFOAM apt repo gated by HEAVY_OK)
